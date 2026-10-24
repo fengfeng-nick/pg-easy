@@ -4,6 +4,11 @@ dist
 *.log
 .vite
 
+# 本地环境与工具缓存（不进仓库）
+.env
+.env.*
+.workbuddy
+
 # Rust / Tauri
 src-tauri/target
 src-tauri/gen/schemas
