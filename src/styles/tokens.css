@@ -1,0 +1,120 @@
+/*
+ * Design tokens.
+ *
+ * Two ground colours per theme. "Surface" is the app's paper; "chrome" is the
+ * slightly darker band used by the sidebar and toolbars. Elevation is carried
+ * by a single hairline border and a very slight shadow — desktop software
+ * reads as calm when the furniture is quiet and the content is loud.
+ */
+
+:root {
+  --font-ui: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", "Cascadia Mono",
+    Menlo, Consolas, monospace;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 15px;
+
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 11px;
+
+  --titlebar-h: 38px;
+  --tabbar-h: 36px;
+  --statusbar-h: 26px;
+
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --speed: 140ms;
+}
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  --surface: #fbfbfa;
+  --chrome: #f4f4f2;
+  --chrome-raised: #ffffff;
+  --sunken: #efefec;
+  --hover: rgba(16, 18, 22, 0.045);
+  --active: rgba(16, 18, 22, 0.075);
+  --line: #e4e4e0;
+  --line-strong: #d3d3ce;
+
+  --ink: #1c1d1f;
+  --ink-soft: #55575c;
+  --ink-muted: #8a8c91;
+  --ink-faint: #b4b5b8;
+
+  --accent: #0d6e6e;
+  --accent-hover: #0a5c5c;
+  --accent-ink: #0a5757;
+  --accent-wash: #e6f1f0;
+
+  --danger: #c03535;
+  --danger-ink: #a52a2a;
+  --danger-wash: #fbebeb;
+  --warn: #a86a10;
+  --warn-wash: #fbf2e2;
+  --ok: #2f7d4f;
+
+  --shadow-sm: 0 1px 1px rgba(16, 18, 22, 0.04);
+  --shadow-md: 0 1px 2px rgba(16, 18, 22, 0.05), 0 6px 18px rgba(16, 18, 22, 0.07);
+  --shadow-lg: 0 2px 4px rgba(16, 18, 22, 0.06), 0 18px 48px rgba(16, 18, 22, 0.16);
+  --overlay: rgba(20, 22, 25, 0.28);
+
+  --selection: rgba(13, 110, 110, 0.14);
+  --grid-stripe: rgba(16, 18, 22, 0.018);
+  --grid-hover: rgba(16, 18, 22, 0.035);
+  --null: #a9aab0;
+  --number: #11538f;
+  --string: #7a3e0b;
+  --boolean: #6b3fa0;
+  --time: #2c5f8a;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface: #17181a;
+  --chrome: #131415;
+  --chrome-raised: #1d1f21;
+  --sunken: #101112;
+  --hover: rgba(255, 255, 255, 0.045);
+  --active: rgba(255, 255, 255, 0.08);
+  --line: #26282b;
+  --line-strong: #34373b;
+
+  --ink: #e7e7e5;
+  --ink-soft: #a4a6aa;
+  --ink-muted: #73767b;
+  --ink-faint: #4a4d52;
+
+  --accent: #4cb5a8;
+  --accent-hover: #63c6b9;
+  --accent-ink: #7fd4c8;
+  --accent-wash: rgba(76, 181, 168, 0.12);
+
+  --danger: #e56565;
+  --danger-ink: #ef8585;
+  --danger-wash: rgba(229, 101, 101, 0.12);
+  --warn: #d9a04c;
+  --warn-wash: rgba(217, 160, 76, 0.12);
+  --ok: #6cc08a;
+
+  --shadow-sm: 0 1px 1px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.5), 0 24px 64px rgba(0, 0, 0, 0.55);
+  --overlay: rgba(0, 0, 0, 0.55);
+
+  --selection: rgba(76, 181, 168, 0.2);
+  --grid-stripe: rgba(255, 255, 255, 0.014);
+  --grid-hover: rgba(255, 255, 255, 0.035);
+  --null: #5f6267;
+  --number: #7fb2e8;
+  --string: #d8a877;
+  --boolean: #b597e0;
+  --time: #86b8d8;
+}

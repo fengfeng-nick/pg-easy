@@ -1,0 +1,49 @@
+[package]
+name = "pg-easy"
+version = "0.1.0"
+description = "A fast, native PostgreSQL client for macOS and Windows"
+edition = "2021"
+rust-version = "1.85"
+
+[lib]
+name = "pg_easy_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util"] }
+tokio-util = { version = "0.7", features = ["codec", "io"] }
+# The driver is consumed at the protocol level (startup exchange, TLS wrapping,
+# message codec) so that one TLS connector type serves every sslmode while
+# still reporting truthful row types and backend identity.
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1", "with-uuid-1"] }
+postgres-protocol = "0.6"
+fallible-iterator = "0.2"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8"
+rustls-pki-types = "1"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+futures-util = "0.3"
+bytes = "1"
+uuid = { version = "1", features = ["v4"] }
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+base64 = "0.23.1"
+# Native file dialogs for choosing where an export is saved. The renderer
+# never sees a path it did not pick itself.
+[target.'cfg(target_os = "linux")'.dependencies]
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "pollster"] }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+rfd = "0.15"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
