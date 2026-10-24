@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>pg easy</title>
+  <desc>A stack of data layers with a sharp query cursor cutting in at the lower right.</desc>
+  <defs>
+    <linearGradient id="data" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5ce0d1"/>
+      <stop offset="1" stop-color="#169b9b"/>
+    </linearGradient>
+    <linearGradient id="cursor" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#ff8a3d"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="236" fill="#101a1e"/>
+
+  <g fill="none" stroke="url(#data)" stroke-width="52" stroke-linecap="round" stroke-linejoin="round">
+    <ellipse cx="441" cy="303" rx="300" ry="104"/>
+    <path d="M141 303v180c0 57 134 104 300 104s300-47 300-104V303"/>
+    <path d="M141 483v180c0 57 134 104 300 104s300-47 300-104V483"/>
+  </g>
+
+  <path d="M687 487 907 695 793 715 757 827Z" fill="#101a1e" stroke="#101a1e" stroke-width="44" stroke-linejoin="round"/>
+  <path d="M687 487 907 695 793 715 757 827Z" fill="url(#cursor)"/>
+</svg>

@@ -5,6 +5,7 @@ import { useT } from "@/lib/i18n";
 import { isMac, shortcut } from "@/lib/platform";
 import { useApp } from "@/lib/store";
 import { Button } from "@/components/ui/Button";
+import { Logo } from "@/components/ui/Logo";
 
 export function Welcome({ onNewConnection }: { onNewConnection: () => void }) {
   const saved = useApp((state) => state.savedConnections);
@@ -22,9 +23,10 @@ export function Welcome({ onNewConnection }: { onNewConnection: () => void }) {
     <div className="flex h-full items-center justify-center overflow-y-auto px-8 py-10">
       <div className="w-full max-w-[640px]">
         <div className="mb-9 flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-[10px] bg-accent text-white shadow-[0_1px_2px_rgba(0,0,0,0.15)] dark:text-[#0c1818]">
-            <Database className="size-[18px]" strokeWidth={2} />
-          </div>
+          <Logo
+            label={t("app.name")}
+            className="size-9 drop-shadow-[0_1px_2px_rgba(0,0,0,0.18)]"
+          />
           <div>
             <h1 className="text-[16px] font-semibold tracking-[-0.01em] text-ink">{t("app.name")}</h1>
             <p className="text-[12px] text-ink-muted">{t("app.tagline")}</p>
