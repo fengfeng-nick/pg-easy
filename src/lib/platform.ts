@@ -1,10 +1,9 @@
 import { currentLanguage, translate } from "@/lib/i18n";
 
-/** The two platforms get different modifier glyphs and a little different
- *  chrome. Keep this in one place so shortcut hints never disagree with the
- *  handlers. */
-// The UA is only used to pick glyphs and default window padding; behaviour
-// never branches on it, so the deprecation of userAgent sniffing is harmless.
+/** 两个平台使用不同的修饰键符号，窗口外观也略有差别。集中放在一处，
+ *  快捷键提示就不会和处理逻辑对不上。 */
+// UA 只用来选符号和默认的窗口内边距；行为从不按它分支，所以
+// userAgent 嗅探被弃用对我们没有影响。
 export const isMac =
   navigator.userAgent.includes("Macintosh") ||
   navigator.platform?.startsWith("Mac") === true;
@@ -13,7 +12,7 @@ export const mod = isMac ? "⌘" : "Ctrl";
 export const alt = isMac ? "⌥" : "Alt";
 export const shift = isMac ? "⇧" : "Shift";
 
-/** Formats a shortcut as an array of keycap labels. */
+/** 把快捷键格式化成一组键帽标签。 */
 export function shortcut(...keys: string[]): string[] {
   return keys.map((key) => {
     if (key === "mod") return mod;
@@ -25,8 +24,8 @@ export function shortcut(...keys: string[]): string[] {
   });
 }
 
-/** True when the platform's primary modifier is held. Alt/Ctrl are reserved
- *  for their native meanings on macOS, so never treat Ctrl as primary there. */
+/** 平台的“主”修饰键被按下时为真。macOS 上 Alt/Ctrl 保留其原生含义，
+ *  所以那里永远不要把 Ctrl 当作主修饰键。 */
 export function isPrimary(event: KeyboardEvent | React.KeyboardEvent): boolean {
   return isMac ? event.metaKey : event.ctrlKey;
 }
@@ -35,7 +34,7 @@ export function isModified(event: KeyboardEvent | React.KeyboardEvent): boolean 
   return event.metaKey || event.ctrlKey || event.altKey;
 }
 
-/** Collapses a multi-line SQL preview into one line for logs and tabs. */
+/** 把多行 SQL 预览压成一行，供日志和标签页使用。 */
 export function oneLine(text: string, max = 80): string {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
@@ -54,7 +53,7 @@ export function formatCount(value: number): string {
   return new Intl.NumberFormat().format(value);
 }
 
-/** "just now", "3 min ago" — used by the schema refresh label. */
+/** “刚刚”、“3 分钟前”——schema 刷新标签用。 */
 export function timeAgo(timestamp: number): string {
   const language = currentLanguage();
   const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));

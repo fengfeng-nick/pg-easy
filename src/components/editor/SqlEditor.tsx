@@ -46,17 +46,17 @@ export type SqlEditorHandle = {
 
 type Props = {
   value: string;
-  /** Shared per connection, replaced by the workbench when it changes. */
+  /** 按连接共享，连接变化时由工作区替换。 */
   completion: CompletionData | null;
   readOnly?: boolean;
   onSelectionChange?: (selection: string | null) => void;
   onDocChange?: (doc: string) => void;
-  /** 1-based position the server reported, focused when `stamp` changes. */
+  /** 服务器报告的从 1 开始的位置，`stamp` 变化时聚焦到这里。 */
   errorAt?: { position: number; stamp: number } | null;
 };
 
-/** The language plus our completion source; a plain array so CodeMirror can
- *  take it as one compartment value. */
+/** 语言加上本项目的补全源；用普通数组是为了让 CodeMirror 能把它当作
+ *  一个 compartment 值。 */
 function buildLanguage(data: CompletionData | null): Extension {
   const config: SQLConfig = {
     dialect: PostgreSQL,
@@ -82,7 +82,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(
 ) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
-  // CodeMirror's "language" (SQL dialect + completion), not the UI language.
+  // 这里指 CodeMirror 的“语言”（SQL 方言 + 补全），不是界面语言。
   const language = useRef(new Compartment());
   const placeholderSlot = useRef(new Compartment());
   const uiLanguage = useApp((state) => state.language);
@@ -143,21 +143,20 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(
       view.destroy();
       viewRef.current = null;
     };
-    // The editor is created once per mounted tab; completion changes are
-    // applied through the reconfiguration effect below.
+    // 编辑器在每个挂载的标签页上只创建一次；补全的变更通过下面的
+    // 重配置 effect 应用。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // A placeholder is fixed when the editor is created; swap it for the new
-  // language without touching the document, selection or undo history.
+  // 占位文案在编辑器创建时就固定了；换语言时直接替换它，
+  // 不动文档、选区或撤销历史。
   useEffect(() => {
     viewRef.current?.dispatch({
       effects: placeholderSlot.current.reconfigure(placeholderText(uiLanguage)),
     });
   }, [uiLanguage]);
 
-  // Reconfiguring the language swaps the completion schema without touching
-  // the document, undo history or selection.
+  // 重新配置语言只替换补全用的 schema，不影响文档、撤销历史和选区。
   useEffect(() => {
     viewRef.current?.dispatch({
       effects: language.current.reconfigure(buildLanguage(completion)),

@@ -74,8 +74,8 @@ export function SettingsView() {
             <Segmented<Language>
               value={language}
               onChange={(next) => {
-                // Applies at once, and is remembered: a language you have to
-                // save before you can read the Save button is a trap.
+                // 立即生效并被记住：改完语言还得先点保存才能看懂“保存”按钮，
+                // 那就是个陷阱。
                 setLanguage(next);
                 update("language", next);
                 void api.saveSettings({ ...current, language: next }).catch(() => undefined);

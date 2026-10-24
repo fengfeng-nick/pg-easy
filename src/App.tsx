@@ -13,6 +13,7 @@ import { Toasts } from "@/components/ui/Toasts";
 import { Welcome } from "@/components/welcome/Welcome";
 import { CommandPalette } from "@/components/workbench/CommandPalette";
 import { ExportDialog } from "@/components/workbench/ExportDialog";
+import { ImportDialog } from "@/components/workbench/ImportDialog";
 import { QueryWorkbench } from "@/components/workbench/QueryWorkbench";
 import { TableView } from "@/components/workbench/TableView";
 import { cn } from "@/lib/cn";
@@ -107,6 +108,7 @@ export default function App() {
         onRequestConnect={openNewConnection}
       />
       <ExportDialog />
+      <ImportDialog />
       <Toasts />
     </div>
   );
@@ -151,8 +153,8 @@ function useTheme() {
 function useGlobalShortcuts({ onNewConnection }: { onNewConnection: () => void }) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      // Capture phase so shortcuts win over CodeMirror's own bindings, except
-      // when the palette or a dialog owns the focus.
+      // 用捕获阶段，让快捷键优先于 CodeMirror 自身的绑定；但当命令面板或
+      // 对话框持有焦点时不拦截。
       const state = useApp.getState();
       const target = event.target as HTMLElement | null;
       const inDialog = Boolean(target?.closest('[role="dialog"]'));
@@ -218,8 +220,8 @@ function useGlobalShortcuts({ onNewConnection }: { onNewConnection: () => void }
       }
 
       if (primary && (event.key === "=" || event.key === "-" || event.key === "0")) {
-        // Editor font zoom is intentionally not implemented yet; swallow the
-        // browser zoom so the layout never breaks.
+        // 编辑器字体缩放尚未实现，这里刻意吞掉浏览器的缩放行为，
+        // 以免布局被破坏。
         event.preventDefault();
       }
 
@@ -233,8 +235,7 @@ function useGlobalShortcuts({ onNewConnection }: { onNewConnection: () => void }
   }, [onNewConnection]);
 }
 
-/** Keeps the document language (spell-check, font shaping) in step with the
- *  UI language. */
+/** 让文档语言（拼写检查、字形排版）与界面语言保持同步。 */
 function useDocumentLanguage() {
   const language = useApp((state) => state.language);
   useEffect(() => {
@@ -242,7 +243,7 @@ function useDocumentLanguage() {
   }, [language]);
 }
 
-/** The language a launch starts in: the stored choice, else the system's. */
+/** 启动时使用的语言：取保存的选择，否则跟随系统。 */
 function pickLanguage(settings: Settings): Language {
   return settings.language === "zh" || settings.language === "en"
     ? settings.language

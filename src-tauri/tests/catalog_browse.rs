@@ -1,8 +1,8 @@
-//! The sidebar's table browsing path against a real server: a fresh database
-//! with tables in several schemas (one schema hidden from the user) is
-//! catalogued, and the first and second page of a table are read.
+//! 侧边栏的表浏览路径对真实服务器的验证：新建一个在多个 schema 里有表的库
+//! （其中一个 schema 对用户隐藏），对它做目录读取，并读取某张表的第一页和
+//! 第二页。
 //!
-//! Skipped unless `PG_TEST_URL` points at a server, e.g.
+//! 除非 `PG_TEST_URL` 指向一台服务器，否则跳过，例如
 //! `PG_TEST_URL=postgresql://user:pass@localhost:5432/postgres cargo test --test catalog_browse`
 
 use pg_easy_lib::testing::{self, pg, ConnectParams, SslMode};
@@ -71,7 +71,7 @@ async fn lists_tables_and_reads_their_rows() {
     )
     .await
     .unwrap();
-    // A schema the user cannot see must not show up in the tree either.
+    // 用户看不见的 schema 也不能出现在树里。
     exec(
         &mut conn,
         &format!(
@@ -85,7 +85,7 @@ async fn lists_tables_and_reads_their_rows() {
     .await
     .unwrap();
 
-    // The owner sees every schema and relation kind.
+    // 属主能看到所有 schema 和所有关系种类。
     let catalog = pg_easy_lib::testing::catalog::load_catalog(
         &mut testing::dump::session("t", &params, &database, conn),
     )
@@ -101,8 +101,7 @@ async fn lists_tables_and_reads_their_rows() {
         .find(|relation| relation.name == "items")
         .unwrap();
     assert_eq!(items.kind, "table");
-    // ANALYZE has not run, so the estimate may be 0; the row count itself is
-    // what the page query below proves.
+    // 还没跑过 ANALYZE，估算值可能是 0；行数由下面的分页查询来证明。
     assert_eq!(items.columns, 2);
     assert!(catalog.relations.contains_key("public"));
 
@@ -124,7 +123,7 @@ async fn lists_tables_and_reads_their_rows() {
         .keys()
         .any(|name| name.ends_with("_hidden")));
 
-    // Pages: the same statements `firstPageSql` and `tablePageSql` build.
+    // 分页：与 `firstPageSql` 和 `tablePageSql` 构造的语句相同。
     let mut conn = connect(&params).await;
     let first = conn
         .run(
@@ -166,7 +165,7 @@ async fn lists_tables_and_reads_their_rows() {
     assert!(empty.values.is_empty());
     assert_eq!(empty.columns.len(), 1);
 
-    // A table the user may not read fails with the server's own message.
+    // 用户无权读取的表会以服务器自己的消息失败。
     let mut denied = connect(&restricted).await;
     let error = denied
         .run("select * from public.public_table limit 10", usize::MAX)

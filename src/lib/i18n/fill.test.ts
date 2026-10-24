@@ -3,7 +3,7 @@ import { en } from "./en";
 import { fill } from "./fill";
 import { zh } from "./zh";
 
-/** Every leaf path in a message catalogue: `a.b.c` -> value. */
+/** 消息目录里的所有叶子路径：`a.b.c` -> 值。 */
 function leaves(node: unknown, prefix = "", out = new Map<string, string>()) {
   for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
     const path = prefix ? `${prefix}.${key}` : key;
@@ -36,7 +36,7 @@ describe("message catalogues", () => {
   });
 
   it("leave no Chinese label as untranslated English", () => {
-    // Short technical terms (TLS, pid, …) are the same on purpose.
+    // 简短的技术术语（TLS、pid……）是刻意保持一致的。
     const same = [...chinese]
       .filter(([key, text]) => text === english.get(key))
       .map(([key]) => key)

@@ -13,8 +13,8 @@ const kindClass: Record<Exclude<ValueKind, "null">, string> = {
   other: "text-ink-soft",
 };
 
-/** Renders one cell value. NULL is deliberately quiet — it is the most common
- *  thing in a large table and should not compete with real data. */
+/** 渲染一个单元格的值。NULL 刻意做得很淡——大表里它最常见，
+ *  不应该和真实数据抢注意力。 */
 export function CellValue({ value, kind }: { value: string | null; kind: ValueKind }) {
   if (value === null) {
     return <span className="select-none italic text-[var(--null)]">null</span>;
@@ -26,7 +26,7 @@ export function CellValue({ value, kind }: { value: string | null; kind: ValueKi
   );
 }
 
-/** A compact type badge for headers: "int8", "varchar", "jsonb". */
+/** 表头里的紧凑类型标记："int8"、"varchar"、"jsonb"。 */
 export function TypeBadge({ type }: { type: string }) {
   return (
     <span className="font-mono text-[10px] font-normal normal-case tracking-normal text-ink-faint">

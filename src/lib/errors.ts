@@ -8,9 +8,8 @@ import {
 } from "@/lib/i18n";
 
 /**
- * A `detail` is either free text — PostgreSQL's own words, or an underlying
- * I/O error, which pass through untranslated — or a `Translated` token for a
- * detail this app composed around one.
+ * `detail` 要么是自由文本——PostgreSQL 自己的措辞，或底层 I/O 错误，这些
+ * 原样透传不翻译——要么是本应用围绕某个 token 组合出来的 `Translated`。
  */
 export type Translated = {
   token: string;
@@ -19,18 +18,17 @@ export type Translated = {
 
 export type Detail = string | Translated | null;
 
-/** The shape every command can fail with (see `AppError` in `ipc.ts`). */
+/** 每个命令都可能以这种结构失败（见 `ipc.ts` 里的 `AppError`）。 */
 export type LocalizedError = Omit<AppError, "detail"> & {
   detail?: Detail;
-  /** Values for the message's placeholders, in order. */
+  /** 按顺序填充消息占位符的值。 */
   args?: (string | number)[];
 };
 
 /**
- * Backend messages are English by contract; the UI shows them in the user's
- * language. `AppError.message` carries a stable token for messages this app
- * composed (see `BACKEND_MESSAGES`); everything else — PostgreSQL's own text,
- * unexpected failures — passes through unchanged.
+ * 按约定，后端消息是英文；界面上用用户的语言显示。`AppError.message`
+ * 对本应用组合的消息携带稳定 token（见 `BACKEND_MESSAGES`）；其余情况
+ * ——PostgreSQL 自己的文本、意外失败——原样透传。
  */
 const BACKEND_MESSAGES: Record<string, { key: MessageKey; vars?: string[] }> = {
   something_went_wrong: { key: "error.somethingWentWrong" },
@@ -91,9 +89,17 @@ const BACKEND_MESSAGES: Record<string, { key: MessageKey; vars?: string[] }> = {
   table_not_found_hint: { key: "error.messages.tableNotFoundHint" },
   archive_failed: { key: "error.messages.archiveFailed" },
   connection_busy_export: { key: "error.messages.connectionBusyExport" },
+  connection_busy_switch: { key: "error.messages.connectionBusySwitch" },
+  database_required: { key: "error.messages.databaseRequired" },
+  connection_busy_import: { key: "error.messages.connectionBusyImport" },
+  could_not_read_file: { key: "error.messages.couldNotReadFile" },
+  file_not_utf8: { key: "error.messages.fileNotUtf8" },
+  nothing_to_import: { key: "error.messages.nothingToImport" },
+  copy_block_unterminated: { key: "error.messages.copyBlockUnterminated" },
+  import_cancelled: { key: "error.messages.importCancelled" },
 };
 
-/** Positional values a token can be filled with. */
+/** 可以拿来填充 token 的位置参数。 */
 const ARG = (index: number) => `{arg${index}}`;
 
 function fillToken(
@@ -109,13 +115,12 @@ function fillToken(
   return { key: entry.key, vars };
 }
 
-/** True when the backend composed this message, rather than relaying the
- *  server's own text. */
+/** 当这条消息是本应用组合的（而不是转发服务器原文）时为真。 */
 export function isOwnMessage(message: string): boolean {
   return message in BACKEND_MESSAGES;
 }
 
-/** Formats a token with the current language, e.g. a NOTICE or an I/O detail. */
+/** 用当前语言格式化一个 token，例如 NOTICE 或 I/O 细节。 */
 export function translateToken(
   token: Translated,
   language: Language = currentLanguage(),
@@ -124,20 +129,20 @@ export function translateToken(
   return filled ? translate(language, filled.key, filled.vars) : token.token;
 }
 
-/** The message shown for an error, in the current language. */
+/** 错误对外显示的消息，使用当前语言。 */
 export function errorMessage(error: LocalizedError): string {
   if (!isOwnMessage(error.message)) return error.message;
   const filled = fillToken(error.message, error.args);
   return filled ? translate(currentLanguage(), filled.key, filled.vars) : error.message;
 }
 
-/** The detail line under an error, in the current language. */
+/** 错误下方那一行细节，使用当前语言。 */
 export function errorDetail(error: LocalizedError): string | undefined {
   if (!error.detail) return undefined;
   return typeof error.detail === "string" ? error.detail : translateToken(error.detail);
 }
 
-/** What a toast or a panel shows for a rejected command. */
+/** 命令被拒绝时，toast 或面板显示的内容。 */
 export function describeError(value: unknown): {
   message: string;
   detail?: string;

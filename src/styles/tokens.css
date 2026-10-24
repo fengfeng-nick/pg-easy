@@ -1,10 +1,9 @@
 /*
- * Design tokens.
+ * 设计变量（design token）。
  *
- * Two ground colours per theme. "Surface" is the app's paper; "chrome" is the
- * slightly darker band used by the sidebar and toolbars. Elevation is carried
- * by a single hairline border and a very slight shadow — desktop software
- * reads as calm when the furniture is quiet and the content is loud.
+ * 每个主题两档底色。“surface” 是应用的纸面；“chrome” 是侧边栏和工具栏
+ * 用稍深一点的那条带。层次感由一条极细的边线和一点淡淡的阴影承担——
+ * 桌面软件的“家具”安静下来，内容才会显得响。
  */
 
 :root {

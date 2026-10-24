@@ -212,13 +212,13 @@ export function ConnectionDialog({ open, initial, onClose }: Props) {
     setConfirmRemove(false);
     try {
       const gone = await removeSavedConnection(initial.id);
-      // Two entries can share a server, and the dialog may be showing one the
-      // list could no longer act on; it stays open to say so.
+      // 两个条目可能指向同一台服务器，而且对话框里显示的条目可能已经不在
+      // 列表中；此时保持打开，好把原因说清楚。
       if (gone) onClose();
       else setError(t("connection.alreadyRemoved"));
     } catch (failure) {
-      // A closed dialog can take neither the error nor the toast that reports
-      // it, so it stays open to show why the removal failed.
+      // 对话框一旦关闭，既拿不到错误也显示不了提示，所以保持打开，
+      // 说明删除失败的原因。
       const described = describeError(failure);
       setError([described.message, described.detail].filter(Boolean).join("\n"));
     }

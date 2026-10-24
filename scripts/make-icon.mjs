@@ -1,5 +1,5 @@
-// Renders the app icon source (1024px) with macOS's Quick Look, then hands it
-// to `tauri icon` for the platform-specific sizes.
+// 用 macOS 的快速查看把应用图标源文件（1024px）渲染出来，然后交给
+// `tauri icon` 生成各平台尺寸。
 import { writeFileSync, renameSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 

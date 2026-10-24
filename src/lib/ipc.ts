@@ -16,9 +16,8 @@ export type ConnectParams = {
   connectTimeoutMs?: number;
   applicationName?: string;
   /**
-   * Send the password even if the server refuses TLS. libpq's
-   * `PGSSLMODE=allow`; off by default because SCRAM over a clear-text channel
-   * is what a downgrade attack looks like.
+   * 即使服务器拒绝 TLS 也发送密码。对应 libpq 的 `PGSSLMODE=allow`；
+   * 默认关闭，因为明文信道上的 SCRAM 正是降级攻击的样子。
    */
   allowUnencryptedPassword?: boolean;
 };
@@ -51,30 +50,30 @@ export type Column = {
 };
 
 export type StatementResult = {
-  /** 0-based position of the statement in the script. */
+  /** 语句在脚本中从 0 开始的位置。 */
   index: number;
   sql: string;
-  /** Byte offset of the statement in the script, for error mapping. */
+  /** 语句在脚本中的字节偏移，用于错误定位。 */
   start: number;
   hasRows: boolean;
   columns?: Column[];
   rows?: (string | null)[][];
-  /** Rows the statement modified (INSERT/UPDATE/DELETE/MERGE). */
+  /** 语句影响的行数（INSERT/UPDATE/DELETE/MERGE）。 */
   affected: number;
-  /** Rows a SELECT returned. */
+  /** SELECT 返回的行数。 */
   returned: number;
-  /** The server's command tag, e.g. "UPDATE 3". */
+  /** 服务器的命令标签，例如 "UPDATE 3"。 */
   tag?: string;
   durationMs: number;
-  /** More rows arrived than the display limit. */
+  /** 到达的行数超过显示上限。 */
   truncated: boolean;
-  /** The server has no further rows for this statement. */
+  /** 服务器在这条语句上已经没有更多行了。 */
   exhausted?: boolean;
-  /** Tokens the UI formats (`notice`, `notice_at`). */
+  /** 由界面格式化的 token（`notice`、`notice_at`）。 */
   notices?: Translated[];
 };
 
-/** Where the session's transaction stands when a script ends. */
+/** 脚本结束时，会话所处的事务状态。 */
 export type TxStatus = "idle" | "intransaction" | "inerror";
 
 export type ExecResult = {
@@ -159,11 +158,11 @@ export type Settings = {
   maxRows: number;
   connectTimeoutMs: number;
   appName: string;
-  /** `null` follows the system language until the user picks one. */
+  /** 为 `null` 时跟随系统语言，直到用户自己选一个。 */
   language: Language | null;
 };
 
-/** Structured error returned by every command. */
+/** 每个命令都会返回的结构化错误。 */
 export type AppError = {
   kind:
     | "database"
@@ -182,40 +181,40 @@ export type AppError = {
     | "auth"
     | "timeout"
     | "internal";
-  /** A token for messages this app composed (see `lib/errors.ts`), or
-   *  PostgreSQL's own text, shown as-is. */
+  /** 本应用组合的消息 token（见 `lib/errors.ts`），或者 PostgreSQL 自己
+   *  的文本，原样显示。 */
   message: string;
-  /** Free text (server or I/O), or a token with its arguments. */
+  /** 自由文本（服务器或 I/O），或者一个 token 加它的参数。 */
   detail?: string | Translated | null;
-  /** Placeholder values for `message`, in the order the message expects. */
+  /** `message` 的占位值，按消息期望的顺序排列。 */
   args?: (string | number)[];
   code?: string;
-  /** 1-based character position of the error inside the failing statement. */
+  /** 错误在失败语句中从 1 开始的字符位置。 */
   position?: number;
-  /** 0-based index of the statement that failed. */
+  /** 出错的语句从 0 开始的索引。 */
   statementIndex?: number;
   txStatus?: TxStatus;
-  /** Statements that completed before the failure. */
+  /** 失败之前已经执行完成的语句。 */
   results?: StatementResult[];
   resultsDurationMs?: number;
-  /** Rows the failing statement had already received. */
+  /** 失败的那条语句此前已经收到的行。 */
   rows?: StatementResult;
 };
 
-/** What the export dialog asks for. */
+/** 导出对话框询问的内容。 */
 export type DumpOptions = {
-  /** Names the generated file and appears in the script header. */
+  /** 决定生成的文件名，并出现在脚本头部。 */
   database: string;
   format: "sql" | "zip";
-  /** `false` exports the structure only. */
+  /** `false` 时只导出结构。 */
   includeData: boolean;
 };
 
 export type ExportedDump = {
-  /** Base64: a zip is not UTF-8. */
+  /** Base64：zip 不是 UTF-8。 */
   content: string;
   bytes: number;
-  /** Tables that contributed rows (0 when the structure was all that was asked for). */
+  /** 贡献了数据的表数（只导出结构时为 0）。 */
   tables: number;
   durationMs: number;
 };
@@ -224,6 +223,38 @@ export type DumpProgress = {
   exportId: string;
   done: number;
   total: number;
+};
+
+/** 用户选中的 SQL 文件，在读取任何内容之前先描述出来。 */
+export type PickedSqlFile = {
+  path: string;
+  name: string;
+  bytes: number;
+};
+
+/** 导入对话框询问的内容。 */
+export type ImportOptions = {
+  /** 整个脚本放在一个事务里：失败时不留任何残留。 */
+  inTransaction: boolean;
+};
+
+export type ImportOutcome = {
+  statements: number;
+  /** COPY 块以及 INSERT/UPDATE/DELETE 写入的行数。 */
+  rows: number;
+  /** 其中经 COPY 写入的行数。 */
+  copiedRows: number;
+  bytes: number;
+  durationMs: number;
+};
+
+export type ImportProgress = {
+  importId: string;
+  /** 已执行的语句数。 */
+  statements: number;
+  total: number;
+  rows: number;
+  copiedRows: number;
 };
 
 export function isAppError(value: unknown): value is AppError {
@@ -235,13 +266,13 @@ export function isAppError(value: unknown): value is AppError {
   );
 }
 
-/** Commands never reject with plain strings across the IPC boundary except
- *  when the argument itself is malformed; normalise both shapes. */
+/** 跨 IPC 边界时命令从不以裸字符串拒绝，除非参数本身格式有误；两种形态
+ *  都要归一化。 */
 export function asAppError(value: unknown): AppError {
   if (isAppError(value)) return value;
   return {
     kind: "internal",
-    // `lib/errors.ts` maps this to the UI's language.
+    // `lib/errors.ts` 会把它映射成界面语言。
     message: "something_went_wrong",
     detail: typeof value === "string" ? value : JSON.stringify(value),
   } satisfies AppError;
@@ -272,20 +303,30 @@ export const api = {
     invoke<Page>("fetch_more", { id, sql, offset, limit }),
 
   browse: (id: string) => invoke<BrowseResult>("browse", { id }),
+  /** 同一条会话换库。会话 id 保持不变，所以已打开的标签页不用重建。 */
+  switchDatabase: (id: string, database: string) =>
+    invoke<SessionInfo>("switch_database", { id, database }),
   loadCatalog: (id: string) => invoke<Catalog>("load_catalog", { id }),
   loadColumns: (id: string, schema: string, relation: string) =>
     invoke<ColumnInfo[]>("load_columns", { id, schema, relation }),
 
-  /** Whole database when `scope` is omitted, otherwise the named `schema.table`s. */
+  /** 省略 `scope` 时是整个数据库，否则是所列的 `schema.table`。 */
   exportSql: (
     id: string,
     exportId: string,
     scope: string[] | null,
     options: DumpOptions,
   ) => invoke<ExportedDump>("export_sql", { id, exportId, scope, options }),
-  /** Opens a save panel; resolves to the path written, or null if cancelled. */
+  /** 打开选择面板；返回选中的文件，取消时为 null。 */
+  pickSqlFile: (title: string) => invoke<PickedSqlFile | null>("pick_sql_file", { title }),
+  /** 把 .sql 文件回放到连接中。 */
+  importSql: (id: string, importId: string, path: string, options: ImportOptions) =>
+    invoke<ImportOutcome>("import_sql", { id, importId, path, options }),
+  /** 打开保存面板；返回写入的路径，取消时为 null。 */
   saveFile: (title: string, defaultName: string, content: string) =>
     invoke<string | null>("save_file", { title, defaultName, content }),
   onDumpProgress: (handler: (progress: DumpProgress) => void): Promise<UnlistenFn> =>
     listen<DumpProgress>("dump:progress", (event) => handler(event.payload)),
+  onImportProgress: (handler: (progress: ImportProgress) => void): Promise<UnlistenFn> =>
+    listen<ImportProgress>("import:progress", (event) => handler(event.payload)),
 };

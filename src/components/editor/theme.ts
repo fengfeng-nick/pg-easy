@@ -4,10 +4,9 @@ import { tags as t } from "@lezer/highlight";
 import type { Extension } from "@codemirror/state";
 
 /**
- * The editor borrows the app's tokens via CSS variables. Building the CSS
- * base theme from variables (instead of a compiled Theme) is what lets theme
- * switching happen without rebuilding compartments, and keeps CodeMirror's
- * chrome identical to the rest of the window.
+ * 编辑器通过 CSS 变量借用应用的 design token。用变量（而不是编译好的
+ * Theme）构建 CSS 基主题，切换主题时就不必重建 compartment，
+ * CodeMirror 的外观也能与窗口其余部分保持一致。
  */
 const baseTheme = EditorView.theme({
   "&": {

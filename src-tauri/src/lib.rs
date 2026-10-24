@@ -3,6 +3,7 @@ mod commands;
 mod connection;
 mod dump;
 mod error;
+mod import;
 mod pg;
 mod protocol;
 mod query;
@@ -11,7 +12,7 @@ mod sql;
 mod state;
 mod store;
 
-/// Helpers for the integration tests in `tests/`.
+/// `tests/` 里集成测试用的辅助代码。
 #[doc(hidden)]
 pub mod testing;
 
@@ -28,8 +29,8 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
-                // Closing the window ends the process; dropping the managed
-                // state closes every session socket with it.
+                // 关闭窗口就结束了进程；受管状态被丢弃时，所有会话 socket
+                // 也一并关闭。
                 let _ = window.app_handle();
             }
         })
@@ -42,6 +43,7 @@ pub fn run() {
             commands::save_settings,
             commands::connect,
             commands::disconnect,
+            commands::switch_database,
             commands::connection_status,
             commands::execute,
             commands::cancel_query,
@@ -50,6 +52,8 @@ pub fn run() {
             commands::load_catalog,
             commands::load_columns,
             commands::export_sql,
+            commands::pick_sql_file,
+            commands::import_sql,
             commands::save_file,
         ])
         .run(tauri::generate_context!())

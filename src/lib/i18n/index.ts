@@ -12,7 +12,7 @@ export const LANGUAGES: { value: Language; label: string }[] = [
 
 const catalogues: Record<Language, Messages> = { en, zh };
 
-/** Falls back to English for any key a translation is missing. */
+/** 任何缺失的译文都回退到英文。 */
 export function catalogueFor(language: Language): Messages {
   return catalogues[language] ?? en;
 }
@@ -26,8 +26,8 @@ function lookup(language: Language, key: string): string | undefined {
   return typeof node === "string" ? node : undefined;
 }
 
-/** Resolves one key. Outside React (actions, backend error mapping) call this
- *  with the language the store holds; components should use `useT()`. */
+/** 解析单个 key。React 之外（actions、后端错误映射）调用时传入 store 里
+ *  的语言；组件里应该用 `useT()`。 */
 export function translate(language: Language, key: MessageKey, vars?: Vars): string {
   return fill(lookup(language, key) ?? lookup("en", key) ?? key, vars);
 }
@@ -39,13 +39,13 @@ export function useT(): Translate {
   return (key, vars) => translate(language, key, vars);
 }
 
-/** The current language, for code that runs outside a React render. */
+/** 当前语言，供 React 渲染之外运行的代码使用。 */
 export function currentLanguage(): Language {
   return useApp.getState().language;
 }
 
-/** Interpolates a message, grouping the listed numeric values so 1234 reads
- *  1,234 (or 1 234) as the locale expects. */
+/** 插值一条消息，并按本地习惯给列出的数值加千分位，让 1234 显示成
+ *  1,234（或 1 234）。 */
 export function tn(
   t: Translate,
   key: MessageKey,
@@ -66,9 +66,8 @@ export function t(key: MessageKey, vars?: Vars): string {
 }
 
 /**
- * Language to open the first launch with: Chinese for Chinese-language
- * systems, English otherwise. An explicit choice in Settings is persisted and
- * wins from then on.
+ * 首次启动时使用的语言：中文系统用中文，其他用英文。在设置里显式选择过
+ * 之后会被持久化，并从此优先。
  */
 export function systemLanguage(): Language {
   const tag =

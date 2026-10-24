@@ -5,10 +5,9 @@ import { isMac } from "@/lib/platform";
 import { useApp } from "@/lib/store";
 import { Button, IconButton } from "@/components/ui/Button";
 
-/** App chrome. On macOS the traffic lights sit inside the overlay title bar,
- *  so the strip reserves room for them and centres the title like a document;
- *  on Windows the same strip is the native title bar area with our controls
- *  right-aligned and the OS close/minimise buttons drawn by the system. */
+/** 应用外框。macOS 上交通灯按钮位于 overlay 标题栏内，所以这一条要给
+ *  它们留出空间，并把标题像文档那样居中；Windows 上同一条区域是原生
+ *  标题栏，我们的控件靠右，关闭/最小化按钮由系统绘制。 */
 export function TitleBar({
   onNewConnection,
   onNewTab,
@@ -66,8 +65,8 @@ export function TitleBar({
   );
 }
 
-/** Lucide's Plug is drawn at an angle that reads as decoration in a toolbar;
- *  this is the same idea on the app's 15px optical grid. */
+/** Lucide 的 Plug 图标是斜着画的，放在工具栏里像装饰；这里按应用
+ *  15px 的光学网格重画了同样的意象。 */
 function PlugIcon() {
   return (
     <svg viewBox="0 0 16 16" className="size-[14px]" fill="none" aria-hidden>

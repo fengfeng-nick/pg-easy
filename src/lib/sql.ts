@@ -1,4 +1,4 @@
-/** Quotes an SQL identifier: `we"ird` becomes `"we""ird"`. */
+/** 给 SQL 标识符加引号：`we"ird` 变成 `"we""ird"`。 */
 export function quoteIdent(name: string) {
   return `"${name.replace(/"/g, '""')}"`;
 }
@@ -7,14 +7,14 @@ export function qualifiedName(schema: string, relation: string) {
   return `${quoteIdent(schema)}.${quoteIdent(relation)}`;
 }
 
-/** The first page of a table. The follow-up pages add the primary-key order
- *  (see `tablePageSql`), which does not change the first page's contents. */
+/** 表的第一页。后续页会加上主键排序（见 `tablePageSql`），这不改变
+ *  第一页的内容。 */
 export function firstPageSql(schema: string, relation: string, limit: number) {
   return `select * from ${qualifiedName(schema, relation)} limit ${limit}`;
 }
 
-/** A page of a table ordered by its primary key — the order the grid will use —
- *  so offsets stay stable while the user scrolls. */
+/** 表的一页，按主键排序——也就是表格将采用的顺序——这样滚动时 offset
+ *  保持稳定。 */
 export function tablePageSql(
   schema: string,
   relation: string,

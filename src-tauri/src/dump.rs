@@ -1,23 +1,18 @@
-//! SQL dumps.
+//! SQL 转储。
 //!
-//! Rather than shelling out to `pg_dump`, the script is assembled from the
-//! catalog: table structure comes from `pg_catalog` (columns, defaults,
-//! constraints, indexes, triggers, partitions, foreign keys, sequences) and
-//! data comes out through `COPY ... TO STDOUT`, which the wire client already
-//! understands. The result is plain SQL that replays with `psql -f`, ordered
-//! so every object's dependencies exist before it is used.
+//! 这里不调用 `pg_dump`，而是从目录里拼出脚本：表结构来自 `pg_catalog`
+//! （列、默认值、约束、索引、触发器、分区、外键、序列），数据通过
+//! `COPY ... TO STDOUT` 取出，线协议客户端本来就认识它。结果是可被 `psql -f`
+//! 直接回放的纯 SQL，顺序保证每个对象的依赖都在它之前存在。
 //!
-//! The whole dump is read inside one read-only `repeatable read` transaction,
-//! so the structure and the rows describe the same moment even while the
-//! database is written to; the transaction is ended again whether the dump
-//! finishes, fails or is cancelled.
+//! 整个转储在一个只读的 `repeatable read` 事务里读取，所以即使有人在写库，
+//! 结构和行描述的也是同一时刻；无论转储完成、失败还是被取消，事务都会结束。
 //!
-//! The output streams: the structure is produced in one piece (it has to be
-//! ordered as a whole), then the rows go out one `copy ... from stdin` block
-//! per table, so a large database never sits in memory twice.
+//! 输出是流式的：结构一次产出（它整体上必须有序），随后每张表输出一个
+//! `copy ... from stdin` 块，大库因此不会在内存里存两份。
 //!
-//! Two shapes are produced from the same pieces: one SQL script holding
-//! everything, or a zip holding `schema.sql` and `data.sql` separately.
+//! 同一批材料产出两种形态：一个包含全部内容的 SQL 脚本，或一个分别装
+//! `schema.sql` 与 `data.sql` 的 zip。
 
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -30,44 +25,44 @@ use crate::state::Session;
 const SYSTEM_SCHEMA_FILTER: &str =
     "n.nspname not in ('pg_catalog', 'information_schema') and n.nspname not like 'pg_toast%'";
 
-/// How long a cancelled export waits for the server to settle.
+/// 被取消的导出等待服务器平静下来要多久。
 const SETTLE: Duration = Duration::from_secs(5);
 
 // ---------------------------------------------------------------------------
-// Planning
+// 规划
 
-/// One relation the dump covers.
+/// 转储覆盖的一个关系。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlanRelation {
-    /// `pg_class.oid`, kept as text because it rides along in SQL lists.
+    /// `pg_class.oid`，以文本形式保留，因为它会随 SQL 列表一起传递。
     pub oid: String,
     pub schema: String,
     pub name: String,
-    /// table, partitioned, view, matview, foreign
+    /// table、partitioned、view、matview、foreign
     pub kind: String,
-    /// Whether its rows are exported. False for views and materialized views,
-    /// and for partitions, whose rows travel with their parent.
+    /// 是否导出它的行。视图和物化视图为 false，分区也为 false——分区的行随
+    /// 父表一起走。
     pub has_data: bool,
-    /// `schema.parent` when this relation is a partition.
+    /// 该关系是分区时，写 `schema.parent`。
     pub partition_of: Option<String>,
-    /// Tables named by this table's foreign keys, as PostgreSQL spells them.
+    /// 本表外键指向的表，采用 PostgreSQL 自己的写法。
     pub foreign_keys: Vec<Reference>,
 }
 
-/// Where a foreign key points.
+/// 外键指向哪里。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reference {
-    /// `schema.table` as written in the constraint's definition.
+    /// 约束定义里写成的 `schema.table`。
     pub references: String,
 }
 
 impl PlanRelation {
-    /// `schema.table`, quoting only what PostgreSQL needs.
+    /// `schema.table`，只在 PostgreSQL 需要时加引号。
     fn qualified(&self) -> String {
         format!("{}.{}", quote_ident(&self.schema), quote_ident(&self.name))
     }
 
-    /// `schema.name`, the form `partition_of` uses.
+    /// `schema.name`，`partition_of` 使用的形式。
     pub fn key_name(&self) -> String {
         format!("{}.{}", self.schema, self.name)
     }
@@ -77,11 +72,10 @@ impl PlanRelation {
     }
 }
 
-/// Works out which relations the dump covers.
+/// 算出转储覆盖哪些关系。
 ///
-/// `None` means every schema the session can use. A list names tables as the
-/// user typed them — `public.orders`, or bare `orders` — and a bare name may
-/// match the same table in several schemas.
+/// `None` 表示会话可用的所有 schema。传入列表则按用户输入的写法命名表——
+/// `public.orders` 或裸的 `orders`——裸名可能匹配多个 schema 里的同名表。
 pub async fn plan(
     session: &mut Session,
     scope: Option<&[String]>,
@@ -105,8 +99,7 @@ pub async fn plan(
         });
         missing_names(wanted, &relations)?;
 
-        // A partition cannot be created without its parent's structure, and
-        // the parent may itself be a partition several levels up.
+        // 分区离开父表结构就无法创建，而父表本身可能又是几层之上的分区。
         let mut index = 0;
         while index < relations.len() {
             let parent = relations[index].partition_of.clone();
@@ -189,8 +182,7 @@ async fn exportable_relations(session: &mut Session) -> Result<Vec<PlanRelation>
         .collect())
 }
 
-/// One relation by `schema.name`, used for partition ancestors that were not
-/// part of the chosen list.
+/// 按 `schema.name` 取一个关系，用于不在选定列表里的分区祖先。
 async fn load_relation(
     session: &mut Session,
     key: &(String, String),
@@ -228,9 +220,9 @@ fn relation_from_row(row: &[Option<String>]) -> Option<PlanRelation> {
 }
 
 // ---------------------------------------------------------------------------
-// Running a dump
+// 执行转储
 
-/// Where the script is written: a file on disk, or a buffer in tests.
+/// 脚本写到哪里：磁盘上的文件，或测试里的缓冲区。
 pub trait DumpSink: Send {
     fn write(&mut self, bytes: &[u8]) -> Result<(), AppError>;
 }
@@ -242,11 +234,11 @@ impl DumpSink for Vec<u8> {
     }
 }
 
-/// Runs the dump inside a snapshot transaction, writing the script straight
-/// to `sink` as it is produced, and reports how many tables contributed rows.
+/// 在快照事务里执行转储，边产出边直接写入 `sink`，并返回有多少张表贡献了
+/// 数据行。
 ///
-/// `cancelled` is polled between tables so the dialog's stop button can act
-/// before the last relation has been read.
+/// 每张表之间检查一次 `cancelled`，对话框的停止按钮因此能在最后一个关系被
+/// 读完之前生效。
 pub async fn run(
     session: &mut Session,
     relations: &[PlanRelation],
@@ -267,8 +259,8 @@ pub async fn run(
         .execute("begin isolation level repeatable read read only")
         .await?;
     let outcome = write_dump(session, relations, options, sink, &stop).await;
-    // Success, failure, a lost socket or a cancel request all land here: the
-    // snapshot ends before the session is handed back to the editor.
+    // 成功、失败、连接断开或取消请求都在这里收尾：把会话交还编辑器之前，
+    // 快照事务先结束。
     session.conn.settle(SETTLE).await;
     let _ = session.conn.execute("rollback").await;
     outcome
@@ -284,16 +276,15 @@ async fn write_dump(
     let mut schema = SchemaDump::load(session, relations, options.include_data, stop).await?;
     schema.reconcile_constraints(session, relations, stop).await?;
     let relations = with_foreign_keys(relations, &schema.constraints);
-    // The rows section is ordered by foreign keys, which the structure load
-    // does not know about yet.
+    // 数据段按外键排序，而加载结构时还不知道这些外键。
     schema.data_relations = ordered_data_relations(&relations, options.include_data);
     let tables = ordered_data_relations(&relations, options.include_data);
 
     let structure = schema.render();
     match options.format {
         DumpFormat::Zip => {
-            // A zip needs every entry's size before its directory can be
-            // written, so this shape is assembled in memory.
+            // zip 需要先知道每个条目的大小才能写它的目录，所以这种形态在
+            // 内存里组装。
             let data = if options.include_data {
                 let mut buffer: Vec<u8> = Vec::new();
                 write_data(session, &schema, &mut buffer, stop).await?;
@@ -301,8 +292,8 @@ async fn write_dump(
             } else {
                 "-- Structure only: this dump holds no table rows.\n\n".to_string()
             };
-            // The rows are read only after a schema that replays cleanly is
-            // known to exist, so the schema decides how the script is shaped.
+            // 只有在确认存在一个能干净回放的 schema 之后才读取行，所以
+            // schema 决定了脚本的形状。
             let schema_file = wrapped(header("Schema"), &structure);
             let data_file = header("Data") + &data;
             sink.write(&build_zip(&schema_file, &data_file)?)?;
@@ -320,15 +311,13 @@ fn is_key(kind: &str) -> bool {
     matches!(kind, "p" | "u" | "x")
 }
 
-/// A list of key constraints as the steps of a `do` block: each statement runs
-/// inside the block `wrapped` opens, and the closing `end` is the caller's.
+/// 一串键约束，作为 `do` 块的步骤：每条语句运行在 `wrapped` 打开的块内，
+/// 收尾的 `end` 由调用方负责。
 ///
-/// By the time a statement runs, the server may no longer know an object an
-/// earlier one created (a table re-read from the catalog after its key was
-/// added is the case that showed up); whether that happens depends on how much
-/// the script has grown since the object was last parsed, so it cannot be
-/// predicted. A failed statement gets one more try, after the server is made
-/// to read its catalogs again.
+/// 语句执行时，服务器可能已经不认识前面某条语句创建的对象（给表加上主键后
+/// 再从目录里重读这张表，就是实际出现过的情况）；这取决于对象上次解析之后
+/// 脚本增长了多少，无法预判。失败的语句会再试一次，试之前先让服务器重新读
+/// 一遍目录。
 fn push_steps(out: &mut String, statements: &[String]) {
     for (index, statement) in statements.iter().enumerate() {
         let retry = if index + 1 == statements.len() {
@@ -343,12 +332,10 @@ fn push_steps(out: &mut String, statements: &[String]) {
     }
 }
 
-/// Puts `body`, a run of `;`-terminated statements, inside a `do` block of its
-/// own that retries a failed statement once after making the server read its
-/// catalogs again (see `run_steps` for why). The block runs in one
-/// transaction: a failure rolls the whole run back, and psql then stops on
-/// the re-raised error as it would have on the statement itself. `body` must
-/// start with a `;`-terminated statement of its own or be empty.
+/// 把 `body`（一串以 `;` 结尾的语句）放进自己的 `do` 块里，失败时先让服务器
+/// 重读目录再重试一次（原因见 `run_steps`）。该块在单个事务中运行：一旦失败
+/// 整段回滚，psql 随后停在重新抛出的错误上，效果与停在原语句上相同。
+/// `body` 必须以自身的 `;` 结尾语句开头，或者为空。
 fn wrapped(header: String, body: &str) -> String {
     if !body.contains(';') {
         return header + body;
@@ -356,8 +343,7 @@ fn wrapped(header: String, body: &str) -> String {
     format!("{header}do $steps$\nbegin\n{body}exception when others then\nraise;\nend $steps$;\n\n")
 }
 
-/// The script preamble: settings that make a replay reproduce the rows
-/// exactly, and the moment the dump was taken.
+/// 脚本开头：让回放能精确复现数据行的设置，以及转储发生的时刻。
 fn header(title: &str) -> String {
     format!(
         "--\n-- {title} — exported by pg easy at {} (unix time)\n--\n\n\
@@ -374,18 +360,17 @@ fn header(title: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Data
+// 数据
 
-/// The rows section, streamed as it is read: truncations first (children
-/// before parents, so a parent is never cleared while a child still needs
-/// it), then one COPY block per table, then sequence values.
+/// 数据行部分，边读边流式输出：先截断（子表在前、父表在后，父表就不会在
+/// 子表还需要它的时候被清空），然后每张表一个 COPY 块，最后是序列值。
 async fn write_data(
     session: &mut Session,
     schema: &SchemaDump,
     sink: &mut (dyn DumpSink + Send),
     stop: &(dyn Fn() -> Option<AppError> + Send + Sync),
 ) -> Result<(), AppError> {
-    // Parents first, and a table after everything it has foreign keys to.
+    // 父表在前，指向了外键目标的表排在其后。
     let data_relations = order_by_keys(&schema.data_relations);
     let tables: Vec<&PlanRelation> = data_relations.iter().collect();
     if tables.is_empty() {
@@ -402,8 +387,7 @@ async fn write_data(
     clears.push('\n');
     sink.write(clears.as_bytes())?;
 
-    // Partitions carry no rows of their own; a parent's rows are read
-    // through them, however deeply they are nested.
+    // 分区自身不携带数据行；父表的行要经由它们读取，无论嵌套多深。
     let columns: HashMap<(String, String), String> = schema
         .tables
         .iter()
@@ -414,15 +398,13 @@ async fn write_data(
         if let Some(error) = stop() {
             return Err(error);
         }
-        // COPY refuses generated columns, so both sides name their columns.
+        // COPY 不接受生成列，所以两边都明确列出列名。
         let column_list = columns.get(&relation.key()).cloned().unwrap_or_default();
-        // `copy (select …)` rather than `copy table`: it keeps the statement
-        // a plain COPY, which the client can read, whatever policies apply.
+        // 用 `copy (select …)` 而不是 `copy table`：这样它仍是客户端能读的
+        // 普通 COPY，也不受行级策略影响。
         let source = if relation.kind == "partitioned" {
-            // A partitioned parent holds no rows of its own and refuses a
-            // plain COPY, so its leaves are read instead — but only the ones
-            // the dump covers, since a partition left out of the plan must
-            // stay empty.
+            // 分区父表自身不存数据行，也拒绝普通 COPY，所以改读它的叶子
+            // 分区——但只读计划覆盖到的那些，被排除的分区必须保持为空。
             let leaves: Vec<String> = schema
                 .tables
                 .iter()
@@ -483,9 +465,8 @@ async fn write_data(
     Ok(())
 }
 
-/// `setval` for every free-standing sequence, so the next insert does not
-/// reuse a value that came in with the rows. Sequences the user cannot read,
-/// or that were never called, keep their declared start.
+/// 为每个独立序列执行 `setval`，下一次插入就不会复用随数据行导入的值。
+/// 用户读不到的序列、以及从未被调用过的序列，保留其声明的起始值。
 async fn sequence_values(session: &mut Session) -> Result<Option<String>, AppError> {
     let sequences = load_sequences(session).await?;
     let mut out = String::new();
@@ -515,7 +496,7 @@ async fn sequence_values(session: &mut Session) -> Result<Option<String>, AppErr
     Ok((!out.is_empty()).then_some(out))
 }
 
-/// Moves each identity column's implicit sequence past the imported ids.
+/// 把每个标识列的隐式序列推到已导入的 id 之后。
 fn reset_identity(table: &TableDdl) -> String {
     let qualified = table.relation.qualified();
     let mut out = String::new();
@@ -532,10 +513,9 @@ fn reset_identity(table: &TableDdl) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Structure
+// 结构
 
-/// Everything the structure section needs, read up front so the script is
-/// written in one ordered pass.
+/// 结构段需要的全部内容，预先一次读好，脚本才能按顺序一遍写出。
 struct SchemaDump {
     schemas: Vec<String>,
     sequences: Vec<SequenceInfo>,
@@ -544,9 +524,9 @@ struct SchemaDump {
     constraints: Vec<Constraint>,
     indexes: Vec<Simple>,
     triggers: Vec<Simple>,
-    /// Tables whose rows the data section reads, parents before children.
+    /// 数据段要读其行的表，父表在子表之前。
     data_relations: Vec<PlanRelation>,
-    /// Inheritance parent per table, for plain (non-partition) inheritance.
+    /// 每张表的继承父表，用于普通（非分区）继承。
     inheritants: HashMap<(String, String), String>,
 }
 
@@ -555,16 +535,16 @@ struct TableDdl {
     columns: Vec<ColumnDdl>,
     partition_key: String,
     partition_bound: String,
-    /// A tablespace name other than the database's default.
+    /// 非数据库默认表空间的表空间名。
     tablespace: Option<String>,
     unlogged: bool,
     parent: Option<Parent>,
 }
 
 enum Parent {
-    /// Attached to its parent with `for values <bound>`.
+    /// 通过 `for values <bound>` 挂到父表上。
     Partition(String),
-    /// A plain `inherits (parent)`.
+    /// 普通的 `inherits (parent)`。
     Inherit(String),
 }
 
@@ -573,31 +553,29 @@ struct ColumnDdl {
     data_type: String,
     default: Option<String>,
     not_null: bool,
-    /// `a` (generated always), `d` (by default) or empty.
+    /// `a`（generated always）、`d`（by default）或为空。
     identity: String,
     generated: bool,
     collation: Option<String>,
 }
 
-/// One `pg_constraint` row, rendered as an `alter table ... add constraint`.
+/// 一行 `pg_constraint`，渲染成 `alter table ... add constraint`。
 struct Constraint {
-    /// `schema.table`, quoting only what PostgreSQL needs.
+    /// `schema.table`，只在 PostgreSQL 需要时加引号。
     relation: String,
-    /// Whether PostgreSQL had to quote the schema or table name; only such
-    /// tables need their key's index looked up again (see `render`).
+    /// PostgreSQL 是否不得不给 schema 或表名加引号；只有这类表需要重新查找
+    /// 其键的索引（见 `render`）。
     quoted_relation: bool,
-    /// The column carrying the table's implicit sequence (its id), when the
-    /// key covers exactly that column.
+    /// 承载表隐式序列的列（也就是它的 id），前提是键正好只覆盖这一列。
     id_column: Option<String>,
     name: String,
-    /// p, u, c, x, f or t
+    /// p、u、c、x、f 或 t
     kind: String,
     definition: String,
-    /// For a foreign key, the `schema.table` it refers to.
+    /// 外键所指的 `schema.table`。
     references: Option<String>,
-    /// For a partition's own key, the `schema.table` of its parent. Such a
-    /// key carries no row, but its index is attached to the parent's, which
-    /// keeps index and constraint names identical.
+    /// 分区自身的键所对应的父表 `schema.table`。这样的键不带行，但它的索引
+    /// 挂在父表的索引上，从而保持索引名与约束名一致。
     parent: Option<String>,
 }
 
@@ -645,8 +623,7 @@ impl SchemaDump {
             .map(PlanRelation::key)
             .collect();
 
-        // Partitions are attached by their bound, not through `inherits`, so
-        // only the remaining tables need their parent looked up.
+        // 分区是按边界挂接的，不走 `inherits`，所以只需要为其余表查找父表。
         let mut inheritants = HashMap::new();
         for relation in &data_relations {
             if let Some(error) = stop() {
@@ -688,11 +665,9 @@ impl SchemaDump {
         })
     }
 
-    /// DDL in replay order: schemas, sequences, tables (a parent always
-    /// before its partitions), keys, checks, indexes, views, triggers,
-    /// foreign keys once every table exists, inheritance links, and the
-    /// identity resets that keep later inserts from colliding with imported
-    /// ids.
+    /// 回放顺序的 DDL：schema、序列、表（父表总在分区之前）、键、检查约束、
+    /// 索引、视图、触发器、待所有表都建好后的外键、继承关系，以及防止后续
+    /// 插入与导入 id 冲突的标识列重置。
     fn render(&self) -> String {
         let mut out = String::new();
 
@@ -776,8 +751,8 @@ impl SchemaDump {
             }
         }
 
-        // An inherited parent outside the export already exists in the
-        // target, so its children are linked to it at the end instead.
+        // 导出范围之外的继承父表在目标库里已经存在，所以它的子表放到最后
+        // 再挂上去。
         let inheritants: Vec<(&PlanRelation, &String)> = self
             .data_relations
             .iter()
@@ -814,10 +789,9 @@ impl SchemaDump {
         out
     }
 
-    /// Finds the keys of partitions whose parent is not part of the export.
-    /// Their indexes keep the names they had next to that parent, which a
-    /// standalone `add constraint` would not, so the index is recovered
-    /// through the parent and `attach partition` links it afterwards.
+    /// 找出父表不在导出范围内的分区的键。这些索引保留着它们当初挂在父表旁边
+    /// 时的名字，单独的 `add constraint` 做不到这一点，所以索引经由父表找回，
+    /// 之后用 `attach partition` 挂接。
     async fn reconcile_constraints(
         &mut self,
         session: &mut Session,
@@ -856,8 +830,8 @@ impl SchemaDump {
         for row in &rows.values {
             let relation = relation_name(&text(row, 0));
             let parent = text(row, 2);
-            // A parent inside the export already gave the child its key back
-            // in `load_constraints`, under the name it will have there.
+            // 父表在导出范围内时，已在 `load_constraints` 里把键还给了子表，
+            // 用的是它在目标库中将拥有的名字。
             let (parent_schema, parent_name) = split_name(&parent);
             let inside = relations.iter().any(|other| {
                 other.schema == parent_schema.as_deref().unwrap_or("public")
@@ -882,8 +856,8 @@ impl SchemaDump {
         Ok(())
     }
 
-    /// Identity sequences follow the imported rows, so their `setval` has to
-    /// come after them; the data section of the script calls this.
+    /// 标识序列要跟在导入的行之后，所以 `setval` 必须排在它们后面；脚本的
+    /// 数据段会调用这里。
     fn identity_resets(&self) -> String {
         if self.data_relations.is_empty() {
             return String::new();
@@ -901,10 +875,8 @@ impl SchemaDump {
         out
     }
 
-    /// Parents before children, in alphabetical order otherwise. A table is
-    /// created first and attached to its parent afterwards, so the parent
-    /// only has to be created before the attach; both statements are emitted
-    /// here, in that order.
+    /// 父表在子表之前，除此之外按名称字母序。表先创建再挂到父表上，所以父表
+    /// 只需在挂接之前建好；两条语句都在这里按这个顺序输出。
     fn ordered_tables(&self) -> Vec<&TableDdl> {
         let mut ordered: Vec<&TableDdl> = Vec::new();
         let mut pending: Vec<&TableDdl> = self.tables.iter().collect();
@@ -925,9 +897,8 @@ impl SchemaDump {
                 }
             }
             if ordered.len() == before {
-                // The parent was not found (a quoted name spelled differently,
-                // or a dependency inheritance cannot form); emitting the rest
-                // keeps the script complete rather than silently shorter.
+                // 没找到父表（加了引号的名字写法不同，或继承无法形成的
+                // 依赖）；继续输出其余部分，让脚本保持完整，而不是悄悄变短。
                 ordered.extend(pending.drain(..));
             }
         }
@@ -936,8 +907,8 @@ impl SchemaDump {
 }
 
 impl TableDdl {
-    /// The columns COPY reads and writes, in table order. Generated columns
-    /// are left out: their values are computed, and COPY rejects them.
+    /// COPY 读写的列，按表内顺序。生成列被排除：它们的值由计算得出，而
+    /// COPY 不接受生成列。
     fn column_list(&self) -> String {
         self.columns
             .iter()
@@ -956,8 +927,7 @@ impl TableDdl {
             format!("\n{}\n", columns.join(",\n"))
         };
         let mut sql = format!("create table {qualified} ({body})");
-        // Only a standalone partitioned table declares its key; a partition
-        // inherits the key from its parent.
+        // 只有独立的被分区表才声明自己的键；分区从父表继承键。
         if !self.partition_key.is_empty() && !matches!(self.parent, Some(Parent::Partition(_))) {
             sql.push_str(&format!(" partition by {}", self.partition_key));
         }
@@ -970,8 +940,7 @@ impl TableDdl {
             ));
         }
         sql.push(';');
-        // A partition is created on its own and then attached, so it gets the
-        // parent's shape without repeating it here.
+        // 分区单独创建再挂接，因此它得到父表的形状，而不必在这里重复一遍。
         if let Some(Parent::Partition(parent)) = &self.parent {
             let (schema, name) = split_name(parent);
             sql.push_str(&format!(
@@ -1001,11 +970,10 @@ impl ColumnDdl {
         match self.identity.as_str() {
             "a" => definition.push_str(" generated always as identity"),
             "d" => definition.push_str(" generated by default as identity"),
-            // A generated column stores its expression where a plain column
-            // stores its default; the two never appear together.
+            // 生成列把表达式存在普通列放默认值的位置；两者不会同时出现。
             _ if self.generated => {
                 if let Some(expression) = &self.default {
-                    // `pg_get_expr` already parenthesises the expression.
+                    // `pg_get_expr` 已经给表达式加好了括号。
                     definition.push_str(&format!(" generated always as {expression} stored"));
                 }
             }
@@ -1023,7 +991,7 @@ impl ColumnDdl {
 }
 
 impl Constraint {
-    /// The index a key constraint was made from, when its name says so.
+    /// 键约束当初所用的索引，在名字表露出这一点时返回。
     fn index_name(&self) -> Option<String> {
         let key = match self.kind.as_str() {
             "p" => "pkey",
@@ -1040,9 +1008,8 @@ impl Constraint {
     fn render(&self) -> String {
         if let (Some(parent), Some(index)) = (&self.parent, self.index_name()) {
             let index = index.as_str();
-            // Adding a key to a partition would create the index under the
-            // partition's own name (`big_high_pkey` rather than `big_pkey`);
-            // attaching the parent's index instead names them as they are.
+            // 给分区加键会以分区自己的名字创建索引（`big_high_pkey` 而不是
+            // `big_pkey`）；改为挂接父表的索引，名字就会和原来一致。
             return format!(
                 "alter index {} attach partition {};\n",
                 key_name_sql(parent, index),
@@ -1058,12 +1025,10 @@ impl Constraint {
         let Some(id) = self.id_column.as_ref().filter(|_| self.quoted_relation) else {
             return add;
         };
-        // A key on a table whose name needs quoting gets an index named
-        // after its column (`"U"."id"` gives `U_id_not_null`) instead of the
-        // `U_pkey` that `create table "U" (id bigint primary key)` makes.
-        // Such a table's index is recovered through its id sequence and
-        // reused, which keeps the name the same. The lookup only answers for
-        // the sequence's own table, so anything else adds the key instead.
+        // 表名需要加引号时，键的索引会按列名命名（`"U"."id"` 得到
+        // `U_id_not_null`），而不是 `create table "U" (id bigint primary key)`
+        // 产生的 `U_pkey`。这类表的索引通过它的 id 序列找回并复用，名字因此
+        // 保持一致。该查找只对序列所属的那张表作答，其他情况直接加键。
         format!(
             "--\n-- Keys on names that need quoting reuse the index the column\n\
              -- definitions created, so index names stay the same.\n--\n\
@@ -1136,9 +1101,8 @@ async fn load_table(
         .query(&format!(
             "select a.attname,
                     pg_catalog.format_type(a.atttypid, a.atttypmod),
-                    /* A serial column's default is its sequence, and naming
-                       the sequence directly needs it already declared; the
-                       lookup answers once the column itself exists. */
+                    /* serial 列的默认值就是它的序列，直接引用序列要求它已经
+                       声明过；列本身存在之后这个查找才能作答。 */
                     case when sequence_of.oid IS NOT NULL then format(
                              'pg_catalog.pg_get_serial_sequence(%L, %L)::regclass',
                              a.attrelid::regclass::text, a.attname)
@@ -1188,8 +1152,8 @@ async fn load_table(
         unlogged: false,
         parent: match relation.partition_of.as_ref() {
             Some(parent) => Some(Parent::Partition(parent.clone())),
-            // A plain `inherits (parent)` is declared right after the table,
-            // but only when that parent is created by this export too.
+            // 普通 `inherits (parent)` 紧跟在建表之后声明，而且仅当那张父表
+            // 也由本次导出创建时。
             None => inheritants
                 .get(&relation.key())
                 .filter(|parent| tables.contains(&key_of(parent)))
@@ -1239,10 +1203,8 @@ async fn load_view(session: &mut Session, relation: &PlanRelation) -> Result<Vie
     })
 }
 
-/// Free-standing sequences. Ones owned by a column (serial and identity) are
-/// recreated by that column's own definition and are not declared here —
-/// including the sequence's own dependency on itself, which every sequence
-/// has.
+/// 独立序列。被列拥有的序列（serial 和标识列）由该列的定义重建，不在这里
+/// 声明——包括每个序列对自身的那条依赖。
 async fn load_sequences(session: &mut Session) -> Result<Vec<SequenceInfo>, AppError> {
     let rows = session
         .conn
@@ -1284,7 +1246,7 @@ async fn load_sequences(session: &mut Session) -> Result<Vec<SequenceInfo>, AppE
         .collect())
 }
 
-/// Columns an implicit sequence (`serial`, identity) belongs to.
+/// 隐式序列（`serial`、标识列）所属的列。
 async fn load_constraints(session: &mut Session, oids: &[&str]) -> Result<Vec<Constraint>, AppError> {
     if oids.is_empty() {
         return Ok(Vec::new());
@@ -1297,16 +1259,15 @@ async fn load_constraints(session: &mut Session, oids: &[&str]) -> Result<Vec<Co
                     con.contype,
                     pg_catalog.pg_get_constraintdef(con.oid, true),
                     con.convalidated,
-                    /* The table a foreign key refers to, spelled the way
-                       the definition spells it. */
+                    /* 外键指向的表，写法与定义中一致。 */
                     case when con.contype = 'f' then
                         (select nt.nspname || '.' || tc.relname
                            from pg_catalog.pg_class tc
                            join pg_catalog.pg_namespace nt on nt.oid = tc.relnamespace
                           where tc.oid = con.confrelid)
                     end,
-                    /* A key covers exactly one column with an implicit
-                       sequence: the table's id, whichever name that has. */
+                    /* 键正好覆盖一个带隐式序列的列：也就是表的 id，
+                       不管它叫什么名字。 */
                     case when con.contype = 'p' and array_length(con.conkey, 1) = 1
                           then (select a.attname from pg_catalog.pg_attribute a
                                  where a.attrelid = con.conrelid and a.attnum = con.conkey[1]
@@ -1317,7 +1278,7 @@ async fn load_constraints(session: &mut Session, oids: &[&str]) -> Result<Vec<Co
                                                   and dp.refobjsubid = a.attnum
                                                   and dp.deptype in ('a', 'i')))
                     end,
-                    /* A partition's own key belongs to its parent's. */
+                    /* 分区自己的键属于父表的键。 */
                     case when con.conparentid <> 0 then
                         (select pn.nspname || '.' || pc.relname
                            from pg_catalog.pg_constraint par
@@ -1349,8 +1310,8 @@ async fn load_constraints(session: &mut Session, oids: &[&str]) -> Result<Vec<Co
                 name: text(row, 1),
                 kind: text(row, 2),
                 definition,
-                // The parent's name as the dump will spell it, which is
-                // what `render` needs to write `alter index … attach`.
+                // 转储中将写出的父表名，`render` 写 `alter index … attach`
+                // 时需要它。
                 parent: row.get(7).cloned().flatten().filter(|name| !name.is_empty()),
             }
         })
@@ -1361,7 +1322,7 @@ async fn load_indexes(session: &mut Session, oids: &[&str]) -> Result<Vec<Simple
     if oids.is_empty() {
         return Ok(Vec::new());
     }
-    // Indexes that back a constraint are recreated with it.
+    // 支撑约束的索引随约束一起重建。
     let rows = session
         .conn
         .query(&format!(
@@ -1391,8 +1352,7 @@ async fn load_triggers(session: &mut Session, oids: &[&str]) -> Result<Vec<Simpl
     if oids.is_empty() {
         return Ok(Vec::new());
     }
-    // Internal triggers belong to constraints (foreign keys) and are not
-    // recreated on their own.
+    // 内部触发器属于约束（外键），不单独重建。
     let rows = session
         .conn
         .query(&format!(
@@ -1414,7 +1374,7 @@ async fn load_triggers(session: &mut Session, oids: &[&str]) -> Result<Vec<Simpl
         .collect())
 }
 
-/// The direct inheritance parent of a table that is not a partition.
+/// 不是分区的表的直接继承父表。
 async fn inheritance_parent(
     session: &mut Session,
     relation: &PlanRelation,
@@ -1440,13 +1400,13 @@ async fn inheritance_parent(
 }
 
 // ---------------------------------------------------------------------------
-// File assembly
+// 组装文件
 
 fn section(out: &mut String, title: &str) {
     out.push_str(&format!("\n--\n-- {title}\n--\n\n"));
 }
 
-/// A stored (no compression) zip holding `schema.sql` and `data.sql`.
+/// 一个未压缩（stored）的 zip，内含 `schema.sql` 和 `data.sql`。
 fn build_zip(schema: &str, data: &str) -> Result<Vec<u8>, AppError> {
     let files = [
         ("schema.sql".to_string(), schema.as_bytes().to_vec()),
@@ -1528,7 +1488,7 @@ fn dos_now() -> (u16, u16) {
     (dos_time, date)
 }
 
-/// Days since 1970-01-01 to a civil date (Howard Hinnant's algorithm).
+/// 1970-01-01 以来的天数转成公历日期（Howard Hinnant 算法）。
 fn civil_from_days(days: u64) -> (i64, u32, u32) {
     let z = days as i64 + 719_468;
     let era = z.div_euclid(146_097);
@@ -1558,12 +1518,10 @@ fn crc32(data: &[u8]) -> u32 {
 }
 
 // ---------------------------------------------------------------------------
-// Small helpers
+// 小工具
 
-/// The tables whose rows the data section reads, parents before partitions:
-/// copy blocks rely on that order, and the truncations rely on its reverse.
-/// Copies the plan with each table's foreign keys, which the ordering of
-/// rows needs and the plan itself does not.
+/// 数据段要读其行的表，父表在分区之前：COPY 块依赖这个顺序，截断则依赖它的
+/// 逆向。复制计划时带上每张表的外键，行的排序需要它，而计划本身不需要。
 fn with_foreign_keys(plan: &[PlanRelation], constraints: &[Constraint]) -> Vec<PlanRelation> {
     let mut plan = plan.to_vec();
     for constraint in constraints.iter().filter(|c| c.kind == "f") {
@@ -1580,8 +1538,7 @@ fn with_foreign_keys(plan: &[PlanRelation], constraints: &[Constraint]) -> Vec<P
     plan
 }
 
-/// Whether `relation` is `key`'s parent or an ancestor of it in the planned
-/// tables, which is how nested partitions are found.
+/// `relation` 是否为 `key` 的父表或计划表里的祖先，嵌套分区就是这样找到的。
 fn parent_subtree_contains(
     schema: &SchemaDump,
     ancestor: &PlanRelation,
@@ -1621,12 +1578,10 @@ fn ordered_data_relations(plan: &[PlanRelation], include_data: bool) -> Vec<Plan
     relations
 }
 
-/// Puts tables after the tables their rows reference, so a foreign key is
-/// already satisfied when its rows arrive. A cycle keeps the remaining
-/// tables in alphabetical order rather than looping.
+/// 把表排在其数据行所引用的表之后，这样外键在行到达时已经满足。遇到环时剩下
+/// 的表按字母序保留，而不是死循环。
 fn order_by_keys(tables: &[PlanRelation]) -> Vec<PlanRelation> {
-    // A table follows the tables it has a foreign key to, and its parent
-    // partition.
+    // 一张表排在它外键指向的表之后，也排在它的父分区之后。
     let before: HashMap<(String, String), Vec<(String, String)>> = tables
         .iter()
         .map(|relation| {
@@ -1670,9 +1625,8 @@ fn order_by_keys(tables: &[PlanRelation]) -> Vec<PlanRelation> {
             }
         }
         if ordered.len() == before_count {
-            // A cycle of foreign keys: keep what is left in plan order
-            // rather than looping, and let the replay report any row the
-            // server will not take.
+            // 外键成环：剩下的按计划顺序保留，而不是死循环，让回放去报告
+            // 服务器不接受的行。
             ordered.extend(pending.drain(..));
         }
     }
@@ -1721,20 +1675,20 @@ fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
-/// Whether a statement about `schema.relname` will need the name quoted,
-/// which `to_regclass` accepts and a plain type name would not.
+/// 关于 `schema.relname` 的语句是否需要给名字加引号——`to_regclass` 接受
+/// 加引号的形式，裸的类型名则不行。
 fn needs_quotes(qualified: &str) -> bool {
     relation_name(qualified) != qualified
 }
 
-/// `schema.name` with the bare `name` as its index would be spelled.
+/// `schema.name`，以及它的索引会写成的裸 `name`。
 fn key_name_sql(qualified: &str, name: &str) -> String {
     let (schema, _) = split_name(qualified);
     format!("{}{}", schema_prefix(&schema), quote_ident(name))
 }
 
-/// `public.orders` from an unquoted `schema.relname` pair, quoting each part
-/// only when PostgreSQL would need it.
+/// 由未加引号的 `schema.relname` 组对得到 `public.orders`，只在 PostgreSQL
+/// 需要时给各部分加引号。
 fn relation_name(qualified: &str) -> String {
     let (schema, name) = split_name(qualified);
     format!("{}{}", schema_prefix(&schema), quote_ident(&name))
@@ -1747,8 +1701,8 @@ fn schema_prefix(schema: &Option<String>) -> String {
     }
 }
 
-/// `public.orders` → (`Some("public")`, `orders`). A quoted name may carry a
-/// dot, so only unquoted names are split.
+/// `public.orders` → (`Some("public")`, `orders`)。加引号的名字可能含点，
+/// 所以只拆分未加引号的名字。
 pub fn split_name(name: &str) -> (Option<String>, String) {
     let name = name.trim();
     match name.split_once('.') {
@@ -1830,8 +1784,8 @@ mod tests {
 
     #[test]
     fn writes_a_readable_zip_container() {
-        // The container is hand-rolled, so its shape is worth pinning down:
-        // a local header, the files, then the end of central directory.
+        // 容器是手写的，所以它的结构值得固定下来：本地文件头、各文件，然后
+        // 是中央目录结束标记。
         let zip = build_zip("schema", "data").unwrap();
         assert_eq!(&zip[0..4], b"PK\x03\x04");
         assert_eq!(&zip[zip.len() - 22..zip.len() - 18], b"PK\x05\x06");

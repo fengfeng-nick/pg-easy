@@ -9,9 +9,10 @@ use crate::catalog;
 use crate::connection::ConnectParams;
 use crate::dump;
 use crate::error::AppError;
+use crate::import;
 use crate::protocol::{
-    BrowseResult, Catalog, ColumnInfo, ConnectionStatus, DumpOptions, ExecResult, Page,
-    SavedConnection, SessionInfo,
+    BrowseResult, Catalog, ColumnInfo, ConnectionStatus, DumpOptions, ExecResult, ImportOptions,
+    ImportOutcome, Page, PickedSqlFile, SavedConnection, SessionInfo,
 };
 use crate::query;
 use crate::settings::Settings;
@@ -32,10 +33,9 @@ pub async fn list_connections(app: AppHandle) -> CmdResult<Vec<SavedConnection>>
     Ok(StoreFile::load(&app)?.connections)
 }
 
-/// Upserts a saved connection. Saving the same server and database twice
-/// updates the existing entry instead of piling up duplicates the list cannot
-/// tell apart. A supplied password goes to the keychain; when none is supplied
-/// the stored one is kept (unless saving is turned off).
+/// 新增或更新一条已保存连接。重复保存同一台服务器和同一个库时更新已有条目，
+/// 而不是堆出列表分辨不出的重复项。提供了密码就写入钥匙串；没有提供时保留
+/// 已存的那份（除非关闭了保存）。
 #[tauri::command]
 pub async fn save_connection(
     app: AppHandle,
@@ -76,7 +76,7 @@ pub async fn save_connection(
                 store::save_password(&connection.id, password)?;
                 password_saved = true;
             }
-            // Editing other fields must not forget a password saved earlier.
+            // 编辑其他字段不能把之前保存的密码忘掉。
             None => password_saved = store::has_password(&connection.id),
         }
     } else if !is_new {
@@ -98,9 +98,8 @@ pub async fn delete_connection(app: AppHandle, id: String) -> CmdResult<Vec<Save
     Ok(file.connections)
 }
 
-/// Pre-fills the edit form for a saved connection. Read on demand rather than
-/// shipped with the list so secrets never sit in the renderer's memory longer
-/// than the form is open.
+/// 为已保存连接预填编辑表单。按需读取而不是随列表一起下发，这样密钥在渲染
+/// 进程内存中停留的时间不会超过表单打开的时间。
 #[tauri::command]
 pub async fn read_saved_password(id: String) -> CmdResult<Option<String>> {
     Ok(store::load_password(&id))
@@ -124,11 +123,10 @@ pub async fn save_settings(
     Ok(())
 }
 
-/// How long a connect attempt is allowed to take before it is reported as a
-/// timeout instead of leaving the form spinning.
+/// 一次连接尝试允许花多长时间，超时后报错，而不是让表单一直转圈。
 const CONNECT_TIMEOUT_MS: u64 = 15_000;
 
-/// How long a command waits for a session that is running a statement.
+/// 命令等待正在执行语句的会话最多多久。
 const SESSION_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
 
 #[tauri::command]
@@ -145,6 +143,16 @@ pub async fn disconnect(state: State<'_, Arc<AppState>>, id: String) -> CmdResul
     Ok(())
 }
 
+/// 在同一条连接上换到 `database`。会话 id 不变，界面不用重建标签页。
+#[tauri::command]
+pub async fn switch_database(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+    database: String,
+) -> CmdResult<SessionInfo> {
+    query::switch_database(&state, &id, &database).await
+}
+
 #[tauri::command]
 pub async fn connection_status(
     state: State<'_, Arc<AppState>>,
@@ -153,8 +161,8 @@ pub async fn connection_status(
     Ok(state.peek_status(&id).await)
 }
 
-/// Executes `sql`. On failure the error carries the results of statements that
-/// completed first, so partial work is never silently lost.
+/// 执行 `sql`。失败时错误里带着在此之前已完成的语句结果，部分成果不会被
+/// 悄悄丢掉。
 #[tauri::command]
 pub async fn execute(
     state: State<'_, Arc<AppState>>,
@@ -166,8 +174,8 @@ pub async fn execute(
     query::execute_script(&handle, &sql, max_rows).await
 }
 
-/// Asks the server to abandon the statement running on this session. The
-/// `execute` call itself resolves with a cancelled error.
+/// 请服务器放弃这条会话上正在执行的语句。`execute` 调用本身会以取消错误
+/// 返回。
 #[tauri::command]
 pub async fn cancel_query(state: State<'_, Arc<AppState>>, id: String) -> CmdResult<()> {
     let handle = state.handle(&id).await?;
@@ -211,9 +219,8 @@ pub async fn load_catalog(state: State<'_, Arc<AppState>>, id: String) -> CmdRes
     catalog::load_catalog(&mut slot.session).await
 }
 
-/// Opens the system save panel and writes `content` (base64) to the chosen
-/// path, returning it. The panel and the write live here rather than in the
-/// renderer so the renderer never has to hold a path it did not pick itself.
+/// 打开系统保存面板，把 `content`（base64）写到选定路径并返回它。面板和写入
+/// 放在这里而不是渲染进程，渲染进程就不必持有一个不是自己选的路径。
 #[tauri::command]
 pub async fn save_file(
     title: String,
@@ -222,8 +229,7 @@ pub async fn save_file(
 ) -> CmdResult<Option<String>> {
     let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, content)
         .map_err(AppError::unexpected)?;
-    // The panel blocks; running it off the main thread keeps the window
-    // repainting while the user chooses a folder.
+    // 面板会阻塞；放到主线程之外运行，用户选文件夹时窗口仍能重绘。
     let Some(path) = tokio::task::spawn_blocking(move || {
         rfd::FileDialog::new()
             .set_title(&title)
@@ -240,12 +246,11 @@ pub async fn save_file(
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
-/// Builds an SQL dump of the whole database (`scope` empty) or of the named
-/// tables and returns it base64-encoded, because a zip is not UTF-8.
+/// 构建整个数据库（`scope` 为空）或指定表的 SQL 转储，并以 base64 返回，
+/// 因为 zip 不是 UTF-8。
 ///
-/// Progress is reported as `dump:progress` events (`{ exportId, done, total }`)
-/// so the dialog can show a table count while a large export runs; the call
-/// resolves once the file is complete.
+/// 进度通过 `dump:progress` 事件（`{ exportId, done, total }`）上报，大导出
+/// 期间对话框可以显示表数；调用在文件写完后才返回。
 #[tauri::command]
 pub async fn export_sql(
     app: AppHandle,
@@ -304,8 +309,7 @@ pub async fn export_sql(
     })
 }
 
-/// Collects the script and reports after every table, so the dialog can
-/// show how far a long export has come.
+/// 收集脚本，并在每张表之后上报一次，好让对话框显示长导出的进度。
 struct ProgressSink<'a> {
     buffer: Vec<u8>,
     total: usize,
@@ -325,8 +329,8 @@ impl dump::DumpSink for ProgressSink<'_> {
 
 impl ProgressSink<'_> {
     fn report(&self) {
-        // Count the tables written so far from the blocks emitted: cheap, and
-        // it keeps the sink independent of the dump's ordering.
+        // 从已输出的块里数出目前写了几张表：便宜，而且让 sink 不依赖转储的
+        // 输出顺序。
         let done = self
             .buffer
             .split(|byte| *byte == b'\n')
@@ -354,6 +358,102 @@ pub struct ExportedDump {
 
 fn elapsed_ms(started: Instant) -> f64 {
     (started.elapsed().as_micros() as f64 / 100.0).round() / 10.0
+}
+
+/// 打开系统选择文件面板，并描述用户选中的 SQL 文件。
+///
+/// 面板放在这里而不是渲染进程，渲染进程就永远不必持有一个不是自己选的路径，
+/// 文件的体积也能在读取任何内容之前先显示出来。
+#[tauri::command]
+pub async fn pick_sql_file(title: String) -> CmdResult<Option<PickedSqlFile>> {
+    // 面板会阻塞；放到主线程之外运行，用户浏览文件时窗口仍能重绘。
+    let Some(path) = tokio::task::spawn_blocking(move || {
+        rfd::FileDialog::new()
+            .set_title(&title)
+            .add_filter("SQL", &["sql"])
+            .add_filter("All files", &["*"])
+            .pick_file()
+    })
+    .await
+    .map_err(AppError::unexpected)?
+    else {
+        return Ok(None);
+    };
+
+    let metadata = std::fs::metadata(&path)
+        .map_err(|err| AppError::new("io", "could_not_read_file").with_io_path(&path, &err))?;
+    Ok(Some(PickedSqlFile {
+        name: path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.to_string_lossy().into_owned()),
+        path: path.to_string_lossy().into_owned(),
+        bytes: metadata.len(),
+    }))
+}
+
+/// 把 `path` 上的 SQL 文件回放进会话：结构、数据，以及转储携带的
+/// `COPY … FROM STDIN` 块。
+///
+/// 进度通过 `import:progress` 事件
+/// （`{ importId, statements, total, rows, copiedRows }`）上报，长文件跑到
+/// 哪里对话框都能显示；整个脚本执行完后调用才返回，或者停在哪条语句就
+/// 在哪里失败。
+#[tauri::command]
+pub async fn import_sql(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    id: String,
+    import_id: String,
+    path: String,
+    options: ImportOptions,
+) -> CmdResult<ImportOutcome> {
+    let handle = state.handle(&id).await?;
+
+    // 读文件和切分是 CPU 与磁盘的活儿；解析 100 MB 转储期间异步运行时应该
+    // 保持空闲。
+    let file = std::path::PathBuf::from(&path);
+    let read = file.clone();
+    let bytes = tokio::task::spawn_blocking(move || std::fs::read(&read))
+        .await
+        .map_err(AppError::unexpected)?
+        .map_err(|err| AppError::new("io", "could_not_read_file").with_io_path(&file, &err))?;
+    let size = bytes.len() as u64;
+    // 转储是文本；不是文本的文件会报错，而不是被粗暴解码。
+    let text = String::from_utf8(bytes).map_err(|_| AppError::new("sql", "file_not_utf8"))?;
+
+    let plan = import::plan(text.trim_start_matches('\u{feff}'))?;
+
+    // 与编辑器使用同一条停止路径：`cancel_query` 取消这条会话持有的任何
+    // token。
+    let cancel = tokio_util::sync::CancellationToken::new();
+    *handle.cancel.lock().await = cancel.clone();
+
+    // 整个导入期间独占这条会话：批次之间的空档里，别的命令不能插进来在
+    // 协议上写一半。
+    let mut slot = tokio::time::timeout(SESSION_WAIT, handle.slot.lock())
+        .await
+        .map_err(|_| AppError::new("busy", "connection_busy_import"))?;
+    slot.session.busy = true;
+
+    let progress_id = import_id.clone();
+    let outcome = import::run(&mut slot.session, plan, &options, &cancel, size, move |progress| {
+        let _ = app.emit(
+            "import:progress",
+            &serde_json::json!({
+                "importId": progress_id,
+                "statements": progress.statements,
+                "total": progress.total,
+                "rows": progress.rows,
+                "copiedRows": progress.copied_rows,
+            }),
+        );
+    })
+    .await;
+
+    slot.session.busy = false;
+    slot.session.idle_since = Instant::now();
+    outcome
 }
 
 #[tauri::command]

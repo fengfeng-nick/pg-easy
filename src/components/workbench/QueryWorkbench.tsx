@@ -102,7 +102,7 @@ function TabEditor({ tab }: { tab: Tab }) {
     return position ? { position, stamp: tab.result?.finishedAt ?? 0 } : null;
   }, [tab.result?.error?.position, tab.result?.finishedAt]);
 
-  // Focus follows whichever tab the user activated, like an editor would.
+  // 焦点跟着用户激活的标签页走，和编辑器一样。
   useEffect(() => {
     editorRef.current?.focus();
   }, [tab.id]);
@@ -123,8 +123,8 @@ function TabEditor({ tab }: { tab: Tab }) {
   );
 }
 
-/** Completion data is shared across tabs on a connection and rebuilt only when
- *  the catalog (or the connection) changes. */
+/** 补全数据在同一条连接的各标签页之间共享，只在目录（或连接）变化时
+ *  重建。 */
 const completionByConnection = new Map<string, { catalog: unknown; data: CompletionData }>();
 
 function useCompletion(connection: Connection | undefined) {

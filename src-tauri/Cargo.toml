@@ -33,6 +33,9 @@ bytes = "1"
 uuid = { version = "1", features = ["v4"] }
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
 base64 = "0.23.1"
+# Copy data is compressed on the wire and inflated by the server; the
+# pure-Rust backend keeps the build free of a C zlib.
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 # Native file dialogs for choosing where an export is saved. The renderer
 # never sees a path it did not pick itself.
 [target.'cfg(target_os = "linux")'.dependencies]

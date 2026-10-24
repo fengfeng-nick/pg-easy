@@ -22,8 +22,8 @@ type MenuProps = {
   className?: string;
 };
 
-/** A popover menu anchored to its trigger. Renders in a portal so it is never
- *  clipped by scrolling containers (the result grid has several). */
+/** 锚定在触发器上的浮层菜单。渲染到 portal 里，这样永远不会被可滚动
+ *  容器裁掉（结果表格里就有好几个）。 */
 export function Menu({ trigger, children, align = "start", width = 220, className }: MenuProps) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -36,7 +36,7 @@ export function Menu({ trigger, children, align = "start", width = 220, classNam
     const anchor = anchorRef.current;
     const panel = panelRef.current;
     if (!anchor) return;
-    // `contents` has no layout box, so measure the rendered trigger instead.
+    // `contents` 没有布局盒，所以测量实际渲染出来的触发器。
     const trigger = anchor.firstElementChild;
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
@@ -56,10 +56,9 @@ export function Menu({ trigger, children, align = "start", width = 220, classNam
     if (open) place();
   }, [open, place]);
 
-  // The menu closes on `click`, not `pointerdown`: several items open a
-  // confirm dialog, whose "scrim closes" listener fires on pointerdown. Closing
-  // the menu first would let that same press reach the new dialog and dismiss
-  // it before it is seen, making those items look dead.
+  // 菜单在 `click` 而不是 `pointerdown` 上关闭：有几个菜单项会打开确认
+  // 对话框，而对话框的“点遮罩关闭”监听在 pointerdown 上触发。若先关菜单，
+  // 同一次按下会漏到新对话框上把它关掉，那些菜单项看起来就像失灵了。
   useEffect(() => {
     if (!open) return;
     const onClick = (event: MouseEvent) => {

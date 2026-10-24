@@ -1,9 +1,8 @@
 /**
- * English strings. This file is the source of truth for the message
- * catalogue: `zh` is typed against it, so a missing translation is a type
- * error rather than a blank label.
+ * 英文字符串。这个文件是消息目录的准绳：`zh` 以它为类型基准，所以漏翻
+ * 一条会变成类型错误，而不是界面上出现空白标签。
  *
- * Placeholders are `{name}` and are filled by `format()` in `./index`.
+ * 占位符写作 `{name}`，由 `./index` 里的 `format()` 填充。
  */
 export const en = {
   common: {
@@ -77,12 +76,19 @@ export const en = {
     reload: "Reload tables",
     refreshSchema: "Refresh schema",
     exportDatabase: "Export database…",
+    importSql: "Import SQL file…",
     editSavedConnection: "Edit saved connection…",
     disconnect: "Disconnect",
     disconnectTitle: "Disconnect from {name}?",
     disconnectBody: "Anything uncommitted on this connection will be rolled back.",
     filterTables: "Filter tables",
     noTablesMatch: "No tables match",
+    noTablesHere: "No tables in {database}",
+    noTablesHint: "The tables may be in another database on this server.",
+    switchDatabase: "Switch database",
+    currentDatabase: "current",
+    switchingDatabase: "Switching…",
+    switchFailed: "Could not open {database}",
     updatedAgo: "Updated {when}",
     actionsFor: "Actions for {name}",
     exportTables: "Export {count} tables…",
@@ -262,6 +268,7 @@ export const en = {
     newQuery: "New query",
     newConnection: "New connection…",
     run: "Run statement",
+    import: "Import SQL file…",
     connectToDatabase: "Connect to a database",
   },
 
@@ -300,6 +307,36 @@ export const en = {
     structureOnly: "structure only",
     tablesOfData: "{count} tables of data",
     failed: "Export failed",
+  },
+
+  import: {
+    title: "Import SQL",
+    subtitle: "Replays a .sql script into “{database}”.",
+    chooseFile: "Choose a SQL file…",
+    changeFile: "Choose another file…",
+    noFile: "No file chosen",
+    fileHint:
+      "A script of statements: a dump from pg_dump or from this app, or one you wrote yourself. Rows carried by COPY … FROM STDIN are sent too.",
+    inTransaction: "Import in one transaction",
+    inTransactionHint: "If a statement fails, nothing is kept.",
+    noTransactionHint:
+      "Each statement commits on its own: everything before a failure stays. Needed for statements PostgreSQL refuses inside a transaction, such as create index concurrently.",
+    run: "Import",
+    stop: "Stop",
+    running: "Importing…",
+    progress: "{statements} of {total} statements · {rows} rows",
+    doneTitle: "Import finished",
+    doneDetail: "{statements} statements · {rows} rows",
+    failedTitle: "Import failed",
+    failedAtomic: "Statement {index} failed; the transaction was rolled back.",
+    failedPartial: "Statement {index} failed; earlier statements were kept.",
+    failedNoIndex: "The script stopped before it finished.",
+    stoppedTitle: "Import stopped",
+    stoppedAtomic: "Stopped at statement {index}; the transaction was rolled back.",
+    stoppedPartial: "Stopped at statement {index}; earlier statements were kept.",
+    close: "Close",
+    pickTitle: "Choose an SQL file to import",
+    unreadable: "This file could not be read.",
   },
 
   table: {
@@ -406,6 +443,16 @@ export const en = {
       tableNotFoundHint: "The table may not exist, or your user may not have access to it.",
       exportCancelled: "Export cancelled",
       connectionBusyExport: "This connection is running a statement. Wait for it or cancel it, then export.",
+      connectionBusySwitch:
+        "This connection is running a statement. Wait for it or cancel it, then switch database.",
+      databaseRequired: "A database name is required",
+      connectionBusyImport: "This connection is running a statement. Wait for it or cancel it, then import.",
+      couldNotReadFile: "Could not read the file",
+      fileNotUtf8: "The file is not UTF-8 text, so it was not imported",
+      nothingToImport: "The file holds no statements to run",
+      copyBlockUnterminated:
+        "A COPY block is not closed by a line holding only \\. — the file may be truncated",
+      importCancelled: "Import cancelled",
       ioPath: "{path}: {error}",
       connectionLost: "The connection to the server was lost",
       loginMalformed: "The login challenge was malformed",

@@ -1,9 +1,8 @@
-//! Saved connections and preferences.
+//! 已保存的连接与偏好设置。
 //!
-//! Non-secret fields live in a small JSON file; passwords go to the OS
-//! keychain (macOS Keychain / Windows Credential Manager) keyed by connection
-//! id, never into the JSON. If the keychain is unavailable the password is
-//! simply not saved rather than being written to disk in clear text.
+//! 非密钥字段存在一个小 JSON 文件里；密码进入操作系统钥匙串（macOS Keychain
+//! / Windows Credential Manager），以连接 id 为键，从不写进 JSON。钥匙串
+//! 不可用时，密码只是不被保存，而不是以明文写到磁盘上。
 
 use std::path::{Path, PathBuf};
 
@@ -57,7 +56,7 @@ pub fn read_json(path: &Path) -> Result<StoreFile, AppError> {
     }
 }
 
-/// Writes atomically so a crash mid-save cannot truncate the file.
+/// 原子写入，保存中途崩溃也不会把文件截断。
 pub fn write_json(path: &Path, value: &StoreFile) -> Result<(), AppError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(AppError::unexpected)?;

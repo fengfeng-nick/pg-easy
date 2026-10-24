@@ -40,8 +40,8 @@ export function ResultsPane({ tab }: { tab: Tab }) {
   const active = result.results[activeIndex];
   const error = result.error;
 
-  // Only a statement that actually ran through this client can be paged; a
-  // row count below one page means there is nothing left to ask for.
+  // 只有确实经本客户端执行过的语句才能分页；返回行数不足一页，
+  // 说明没有更多可取了。
   const canLoadMore =
     !!active?.hasRows &&
     !active.truncated &&
@@ -65,9 +65,9 @@ export function ResultsPane({ tab }: { tab: Tab }) {
               ? {
                   ...item,
                   rows: [...(item.rows ?? []), ...page.rows],
-                  // The server said this page was the last one.
+                  // 服务器说这一页就是最后一页。
                   exhausted: page.exhausted,
-                  // The follow-up statement costs time too; keep it visible.
+                  // 后续这条语句也要花时间，保持可见。
                   durationMs: item.durationMs + (Date.now() - startedAt),
                 }
               : item,
@@ -220,7 +220,7 @@ function CommandResult({ statement }: { statement: StatementResult }) {
   );
 }
 
-/** NOTICE and WARNING lines raised while the statement ran, in server order. */
+/** 语句执行期间服务器发出的 NOTICE 与 WARNING，按服务器顺序排列。 */
 function Notices({ notices }: { notices: Translated[] }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -257,7 +257,7 @@ function ErrorPanel({
   onCopy,
 }: {
   error: NonNullable<ResultState["error"]>;
-  /** Rows the failing statement had already received. */
+  /** 失败的那条语句此前已经收到的行。 */
   partial?: React.ReactNode;
   copied: boolean;
   onCopy: () => void;

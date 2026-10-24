@@ -1,15 +1,14 @@
-//! Round-trips of the SQL dumper against a real server: a database with
-//! partitions, identity columns, generated and inherited columns, foreign
-//! keys, views, triggers and a free-standing sequence is exported, replayed
-//! into an empty database, and both sides are compared object by object.
+//! SQL 转储器对真实服务器的往返验证：一个带分区、标识列、生成列和继承列、
+//! 外键、视图、触发器以及一个独立序列的库被导出，回放进空库，然后逐个对象
+//! 比对两边。
 //!
-//! Skipped unless `PG_TEST_URL` points at a server, e.g.
+//! 除非 `PG_TEST_URL` 指向一台服务器，否则跳过，例如
 //! `PG_TEST_URL=postgresql://user:pass@localhost:5432/postgres cargo test --test dump -- --nocapture`
 
 use pg_easy_lib::testing::{self, pg, ConnectParams, SslMode};
 
-/// The fixture, applied to a fresh database. Named `fixture` so its tables
-/// cannot collide with anything another test leaves behind.
+/// 测试夹具，应用到新库上。命名为 `fixture`，这样它的表不会和别的测试留下
+/// 的东西撞上。
 const FIXTURE: &str = "
     create schema fixture;
     create table fixture.users (
@@ -54,9 +53,8 @@ const FIXTURE: &str = "
     select setval('fixture.free_seq', 42);
 ";
 
-/// Describes the fixture's objects in a way two databases can be compared
-/// with: column definitions, constraints, indexes, triggers, views, keys and
-/// an order-independent dump of every table's rows.
+/// 以两个库可以互相比对的方式描述夹具里的对象：列定义、约束、索引、触发器、
+/// 视图、外键，以及每张表行的顺序无关转储。
 const CANONICAL: &str = "
     with rels as (
         select c.oid, n.nspname, c.relname
@@ -168,12 +166,11 @@ async fn run(conn: &mut pg::Connection, sql: &str) -> Result<String, String> {
     }
 }
 
-/// Replays a dump through `psql`, the way a user would. `psql` stops at the
-/// first error once `ON_ERROR_STOP` is set, so it is; with `-i`, `docker exec`
-/// forwards the exit status, which is how a failed statement surfaces here.
+/// 通过 `psql` 回放转储，就像用户会做的那样。设置 `ON_ERROR_STOP` 后 psql
+/// 会在第一个错误处停下，所以这里设了；配合 `-i`，`docker exec` 会转发退出
+/// 状态，失败的语句就是这样在这里暴露出来的。
 ///
-/// The app's own client rejects `COPY ... FROM STDIN`, which is why the replay
-/// cannot go through it.
+/// 应用自己的客户端拒绝 `COPY ... FROM STDIN`，所以回放不能走它。
 async fn replay(database: &str, script: &str) -> Result<(), String> {
     use std::io::Write;
     use std::process::{Command, Stdio};
@@ -273,7 +270,7 @@ async fn a_dump_replays_into_an_identical_database() {
 
     assert_eq!(before, after, "the copy does not match its source");
 
-    // The identity sequence has to keep counting past the imported ids.
+    // 标识序列必须越过导入的 id 继续计数。
     let next = run(
         &mut target_conn,
         "insert into fixture.users (email, name) values ('d@x', 'Dee') returning id",
@@ -282,9 +279,174 @@ async fn a_dump_replays_into_an_identical_database() {
     .unwrap();
     assert_eq!(next, "4");
 
-    // Leave the server as it was found.
+    // 保持服务器维持原样。
     for name in [&target, &source] {
         let _ = run(&mut conn, &format!("drop database if exists {name} with (force)")).await;
     }
+}
+
+/// 同一个转储改用应用自己的导入器回放：`psql` 不再是必经之路，结构、数据
+/// 和 `COPY … FROM STDIN` 的数据行都由本应用自己送进服务器。
+#[tokio::test]
+async fn a_dump_imports_through_the_app_into_an_identical_database() {
+    let Some(params) = params() else {
+        eprintln!("PG_TEST_URL not set; skipping");
+        return;
+    };
+    let mut conn = connect(&params).await;
+
+    let source = format!("imported_{}", std::process::id());
+    let target = format!("{source}_copy");
+    for name in [&source, &target] {
+        let _ = run(
+            &mut conn,
+            &format!("drop database if exists {name} with (force)"),
+        )
+        .await;
+        run(&mut conn, &format!("create database {name}")).await.unwrap();
+    }
+
+    let in_source = ConnectParams {
+        database: source.clone(),
+        ..params.clone()
+    };
+    let raw = connect(&in_source).await;
+    let mut session = pg_easy_lib::testing::dump::session("test", &in_source, &source, raw);
+    run(&mut session.conn, FIXTURE).await.expect("fixture");
+    let before = run(&mut session.conn, CANONICAL)
+        .await
+        .expect("describe source");
+
+    let mut sink: Vec<u8> = Vec::new();
+    let relations = pg_easy_lib::testing::dump::plan(&mut session, None, true)
+        .await
+        .expect("plan");
+    let relations: Vec<_> = relations
+        .into_iter()
+        .filter(|relation| relation.schema == "fixture")
+        .collect();
+    pg_easy_lib::testing::dump::run(
+        &mut session,
+        &relations,
+        &pg_easy_lib::testing::dump::DumpOptions {
+            database: source.clone(),
+            format: pg_easy_lib::testing::dump::DumpFormat::Sql,
+            include_data: true,
+        },
+        &mut sink,
+        &|| false,
+    )
+    .await
+    .expect("dump");
+    let script = String::from_utf8(sink).expect("utf-8 dump");
+
+    let in_target = ConnectParams {
+        database: target.clone(),
+        ..params
+    };
+    let raw = connect(&in_target).await;
+    let mut target_conn =
+        pg_easy_lib::testing::dump::session("test-target", &in_target, &target, raw);
+
+    let plan = pg_easy_lib::testing::import::plan(&script).expect("plan the dump");
+    let statements = plan.total();
+    let outcome = pg_easy_lib::testing::import::run(
+        &mut target_conn,
+        plan,
+        &pg_easy_lib::testing::import::ImportOptions {
+            in_transaction: true,
+        },
+        &tokio_util::sync::CancellationToken::new(),
+        script.len() as u64,
+        |_| {},
+    )
+    .await
+    .expect("import the dump");
+
+    assert_eq!(outcome.statements, statements);
+    assert!(
+        outcome.copied_rows > 0,
+        "the dump carries its rows through COPY blocks"
+    );
+
+    let after = run(&mut target_conn.conn, CANONICAL)
+        .await
+        .expect("describe copy");
+    assert_eq!(before, after, "the imported database does not match its source");
+
+    // 标识序列必须越过导入的 id 继续计数。
+    let next = run(
+        &mut target_conn.conn,
+        "insert into fixture.users (email, name) values ('d@x', 'Dee') returning id",
+    )
+    .await
+    .unwrap();
+    assert_eq!(next, "4");
+
+    for name in [&target, &source] {
+        let _ = run(&mut conn, &format!("drop database if exists {name} with (force)")).await;
+    }
+}
+
+/// 事务里的导入失败时不能留下半成品：结构和数据都该回到起点。
+#[tokio::test]
+async fn a_failed_import_leaves_nothing_behind() {
+    let Some(params) = params() else {
+        eprintln!("PG_TEST_URL not set; skipping");
+        return;
+    };
+    let mut conn = connect(&params).await;
+
+    let target = format!("imported_fail_{}", std::process::id());
+    let _ = run(
+        &mut conn,
+        &format!("drop database if exists {target} with (force)"),
+    )
+    .await;
+    run(&mut conn, &format!("create database {target}"))
+        .await
+        .unwrap();
+
+    let in_target = ConnectParams {
+        database: target.clone(),
+        ..params
+    };
+    let raw = connect(&in_target).await;
+    let mut session = pg_easy_lib::testing::dump::session("test", &in_target, &target, raw);
+
+    let script = "\
+create schema fixture_fail;
+create table fixture_fail.t (a int);
+insert into fixture_fail.t values (1);
+select this_is_not_sql;
+";
+    let plan = pg_easy_lib::testing::import::plan(script).expect("plan");
+    let error = pg_easy_lib::testing::import::run(
+        &mut session,
+        plan,
+        &pg_easy_lib::testing::import::ImportOptions {
+            in_transaction: true,
+        },
+        &tokio_util::sync::CancellationToken::new(),
+        script.len() as u64,
+        |_| {},
+    )
+    .await
+    .err()
+    .expect("the bogus statement fails");
+
+    // 报错要指向文件里的第四条语句，而不是它所在的批次。
+    assert_eq!(error.statement_index, Some(3));
+
+    // 事务已回滚：前面建好的 schema 和表都不该留下。
+    let exists = run(
+        &mut session.conn,
+        "select count(*) from pg_namespace where nspname = 'fixture_fail'",
+    )
+    .await
+    .expect("count schemas");
+    assert_eq!(exists, "0");
+
+    let _ = run(&mut conn, &format!("drop database if exists {target} with (force)")).await;
 }
 

@@ -1,34 +1,71 @@
-//! Splitting a script into individually executable statements.
+//! 把一个脚本切分成可单独执行的语句。
 //!
-//! PostgreSQL parses a whole string as one simple query, but a GUI editor needs
-//! one result per statement and needs to know which statement the cursor is
-//! in. This is a small lexer that understands the constructs which can hide a
-//! semicolon: single/double quotes, `E''` escapes, dollar quoting with tags,
-//! nested block comments, and line comments. It is deliberately not a grammar.
+//! PostgreSQL 会把整个字符串当作一条简单查询解析，但图形化编辑器需要每条
+//! 语句一个结果，还需要知道光标在哪条语句里。这是一个小词法器，理解那些能
+//! 藏住分号的构造：单/双引号、`E''` 转义、带 tag 的美元引用、嵌套块注释和
+//! 行注释。它刻意不构成完整的语法分析器。
 
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SplitStatement {
-    /// Position in the script, 0-based.
+    /// 在脚本中的位置，从 0 开始。
     pub index: usize,
-    /// Statement text with surrounding whitespace removed and no trailing
-    /// semicolon.
+    /// 语句文本，去掉了首尾空白，且不含末尾分号。
     pub sql: String,
-    /// Byte offset of the first character within the original script.
+    /// 首字符在原脚本中的字节偏移。
     pub start: usize,
-    /// Byte offset just past the last character.
+    /// 最后一个字符之后的字节偏移。
     pub end: usize,
 }
 
 pub fn split(script: &str) -> Vec<SplitStatement> {
+    let mut out = Vec::new();
+    let mut offset = 0usize;
+    while let Some(found) = scan(script, offset) {
+        out.push(SplitStatement {
+            index: out.len(),
+            sql: script[found.start..found.end].to_string(),
+            start: found.start,
+            end: found.end,
+        });
+        offset = found.next;
+    }
+    out
+}
+
+/// `from` 之后的下一条语句，`index` 始终为 0，由调用方编号。
+///
+/// 与 [`split`] 不同，这里只扫描到第一条语句结束为止：导入时每跳过一个
+/// `COPY` 数据块都要从干净的边界重新开始，而整份重扫会让大文件变成平方级。
+pub fn next_statement(script: &str, from: usize) -> Option<SplitStatement> {
+    let found = scan(script, from)?;
+    Some(SplitStatement {
+        index: 0,
+        sql: script[found.start..found.end].to_string(),
+        start: found.start,
+        end: found.end,
+    })
+}
+
+/// 一条语句在脚本中的位置，以及它结束后可以继续扫描的偏移。
+struct Found {
+    start: usize,
+    end: usize,
+    /// 终止分号之后（或文本末尾）。
+    next: usize,
+}
+
+fn scan(script: &str, from: usize) -> Option<Found> {
     let bytes = script.as_bytes();
     let len = bytes.len();
-    let mut out = Vec::new();
-    let mut start = 0usize;
-    let mut i = 0usize;
+    let mut start = from.min(len);
+    let mut i = start;
     let mut has_code = false;
+    if start >= len {
+        return None;
+    }
 
     while i < len {
         match bytes[i] {
@@ -44,7 +81,7 @@ pub fn split(script: &str) -> Vec<SplitStatement> {
                 has_code = true;
                 i = match dollar_tag_end(bytes, i) {
                     Some(tag_end) => skip_dollar_quoted(bytes, i, tag_end),
-                    None => i + 1, // `$1` parameter or a lone dollar sign
+                    None => i + 1, // `$1` 参数或一个单独的美元符号
                 };
             }
             b'-' if bytes.get(i + 1) == Some(&b'-') => {
@@ -56,9 +93,12 @@ pub fn split(script: &str) -> Vec<SplitStatement> {
                 i = skip_block_comment(bytes, i);
             }
             b';' => {
-                if let Some(mut stmt) = trim_statement(script, start, i, has_code) {
-                    stmt.index = out.len();
-                    out.push(stmt);
+                if let Some(statement) = trim_statement(script, start, i, has_code) {
+                    return Some(Found {
+                        start: statement.start,
+                        end: statement.end,
+                        next: i + 1,
+                    });
                 }
                 has_code = false;
                 i += 1;
@@ -72,15 +112,14 @@ pub fn split(script: &str) -> Vec<SplitStatement> {
         }
     }
 
-    if let Some(mut stmt) = trim_statement(script, start, len, has_code) {
-        stmt.index = out.len();
-        out.push(stmt);
-    }
-    out
+    trim_statement(script, start, len, has_code).map(|statement| Found {
+        start: statement.start,
+        end: statement.end,
+        next: len,
+    })
 }
 
-/// Builds a statement from `[start, end)` unless it is only whitespace and
-/// comments.
+/// 由 `[start, end)` 构造一条语句，除非这段只有空白和注释。
 fn trim_statement(
     script: &str,
     start: usize,
@@ -104,8 +143,8 @@ fn trim_statement(
     })
 }
 
-/// Whether the fragment holds anything executable (used only for fragments the
-/// main loop did not already mark as code, i.e. comment-only tails).
+/// 片段里是否有可执行内容（只用于主循环未标记为代码的片段，也就是只剩注释
+/// 的尾部）。
 fn contains_code(fragment: &str) -> bool {
     let bytes = fragment.as_bytes();
     let mut i = 0;
@@ -124,10 +163,9 @@ fn contains_code(fragment: &str) -> bool {
     false
 }
 
-/// Skips a quoted run starting at `i` (which points at `quote`) and returns the
-/// index just past the closing quote. Backslashes are treated as escapes only
-/// for single quotes, covering `E'...'`; the cost of over-honouring is an
-/// extended literal, which is the safe direction for a splitter.
+/// 跳过从 `i` 开始的一段引号串（`i` 指向 `quote`），返回闭合引号之后一位的
+/// 索引。反斜杠只对单引号按转义处理，覆盖 `E'...'`；多认成转义的代价是把
+/// 普通串当成扩展字面量，这对拆分器来说是安全的方向。
 fn skip_quoted(bytes: &[u8], mut i: usize, quote: u8) -> usize {
     i += 1;
     while i < bytes.len() {
@@ -146,8 +184,7 @@ fn skip_quoted(bytes: &[u8], mut i: usize, quote: u8) -> usize {
     bytes.len()
 }
 
-/// If `i` points at the `$` of a `$tag$` opener, returns the index just past
-/// the opener.
+/// 若 `i` 指向 `$tag$` 开头的 `$`，返回开头之后一位的索引。
 fn dollar_tag_end(bytes: &[u8], i: usize) -> Option<usize> {
     let mut j = i + 1;
     while j < bytes.len() {
@@ -205,8 +242,7 @@ fn utf8_len(bytes: &[u8], i: usize) -> usize {
     }
 }
 
-/// The statement the cursor is inside, or the statement ending just before the
-/// cursor when the cursor sits between statements.
+/// 光标所在的语句；光标正好在两条语句之间时，返回它之前刚结束的那条。
 #[allow(dead_code)]
 pub fn statement_at(script: &str, cursor: usize) -> Option<SplitStatement> {
     let statements = split(script);

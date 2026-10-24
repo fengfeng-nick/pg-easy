@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowRight, Database, Plus, Search, Settings2, Table2, Terminal } from "lucide-react";
+import { ArrowRight, Database, Plus, Search, Settings2, Table2, Terminal, Upload } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n";
 import { isMac, mod } from "@/lib/platform";
@@ -74,6 +74,18 @@ export function CommandPalette({
       },
     ];
 
+    // 导入需要一个连接；没有连接时命令面板底部本来就会提示先连一个。
+    if (activeConnection) {
+      list.splice(3, 0, {
+        id: "import",
+        label: t("palette.import"),
+        hint: activeConnection.name,
+        group: "actions",
+        icon: <Upload />,
+        run: () => state.openImport({ connectionId: activeConnection.id }),
+      });
+    }
+
     for (const connection of state.connections) {
       if (!connection.catalog) continue;
       for (const [schema, relations] of Object.entries(connection.catalog.relations)) {
@@ -116,7 +128,7 @@ export function CommandPalette({
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
     if (!term) return commands.slice(0, 60);
-    // Prefix matches on the label rank above substring matches in the hint.
+    // 标题前缀匹配排在提示文本的子串匹配前面。
     const scored = commands
       .map((command) => {
         const label = command.label.toLowerCase();

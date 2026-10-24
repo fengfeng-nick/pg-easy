@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 
-/** Drag handler for the sidebar splitter. Width updates live via `onResize`;
- *  the pointer is captured on `window` so a fast drag never loses the handle. */
+/** 侧边栏分隔条的拖拽处理。宽度通过 `onResize` 实时更新；指针在
+ *  `window` 上捕获，快速拖动也不会丢掉手柄。 */
 export function useResizablePanel(onResize: (width: number) => void) {
   const startDrag = useCallback(
     (event: React.PointerEvent) => {

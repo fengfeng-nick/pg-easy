@@ -1,8 +1,8 @@
 import { PostgreSQL, type SQLConfig, type SQLNamespace } from "@codemirror/lang-sql";
 import { api, type Catalog } from "@/lib/ipc";
 
-/** Builds the completion config. `columns` is keyed `schema.relation`; an
- *  entry may be absent (columns not loaded yet) or a promise placeholder. */
+/** 构建补全配置。`columns` 以 `schema.relation` 为键；某一项可能缺失
+ *  （列还没加载）或是一个占位的 promise。 */
 export function makeSqlConfig(
   catalog: Catalog | null,
   columns: ReadonlyMap<string, string[]>,
@@ -29,13 +29,13 @@ export function makeSqlConfig(
   };
 }
 
-// Shared across editor instances: a column list is the same for every tab on
-// a connection, and duplicate in-flight requests would double the round trips.
+// 跨编辑器实例共享：同一条连接上每个标签页的列清单都一样，
+// 重复的并发请求只会让往返次数翻倍。
 const inflight = new Map<string, Promise<string[]>>();
 
 /**
- * Loads a relation's columns into `cache`. Safe to call repeatedly; only the
- * first call per relation issues a query. Returns whether anything changed.
+ * 把某个关系的列加载进 `cache`。可以重复调用，每个关系只有第一次调用
+ * 会真正发起查询。返回是否有内容发生了变化。
  */
 export async function loadRelationColumns(
   connectionId: string,
@@ -61,8 +61,7 @@ export async function loadRelationColumns(
     cache.set(key, names);
     return true;
   } catch {
-    // Completion silently stays at table level for this relation; the user's
-    // query is unaffected.
+    // 这个关系上的补全就停在表级别；用户的查询本身不受影响。
     return false;
   } finally {
     inflight.delete(scope);
@@ -80,8 +79,7 @@ export type TableEntry = {
   qualified: string;
 };
 
-/** Every relation in the connection, ordered like the sidebar, for the
- *  command palette's table jump. */
+/** 连接里的所有关系，顺序与侧边栏一致，供命令面板的表跳转使用。 */
 export function listTables(catalog: Catalog | null): TableEntry[] {
   if (!catalog) return [];
   return Object.entries(catalog.relations)

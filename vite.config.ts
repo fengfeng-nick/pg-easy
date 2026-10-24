@@ -8,7 +8,7 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    // Mirrors the `@/*` path mapping in tsconfig.json.
+    // 与 tsconfig.json 里的 `@/*` 路径映射保持一致。
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
   clearScreen: false,

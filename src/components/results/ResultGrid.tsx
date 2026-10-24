@@ -19,9 +19,9 @@ function measureWidths(
   rows: (string | null)[][],
   sample: number,
 ): number[] {
-  // Width from the longest of header + a sample of rows, clamped. Measuring
-  // text is cheap in batches but wasteful per row; a sample is enough because
-  // the grid is virtualised anyway and users resize/scroll.
+  // 宽度取表头与若干样本行中最长者，并做钳制。批量测量文本很便宜，
+  // 逐行测量则浪费；取样已经足够，因为表格本身是虚拟滚动的，
+  // 用户也会手动调宽或滚动。
   const counts = columns.map((column) => Math.min(24, column.name.length + 2));
   const limit = Math.min(rows.length, sample);
   for (let r = 0; r < limit; r += 1) {
@@ -43,10 +43,10 @@ type Props = {
   loadedCount: number;
   onLoadMore: () => void;
   showRowNumbers?: boolean;
-  /** The server stopped collecting rows at the configured ceiling. */
+  /** 服务器在配置的行数上限处停止了收集。 */
   truncated?: boolean;
-  /** Sorting in place would reorder only the rows loaded so far; turn it off
-   *  for paged tables, whose pages are not all in memory. */
+  /** 就地排序只会重排已加载的行；分页表的所有页并不都在内存里，
+   *  因此对它关闭排序。 */
   sortable?: boolean;
 };
 
@@ -72,7 +72,7 @@ export function ResultGrid({
   const sortedRows = useMemo(() => {
     if (!sort) return rows;
     const { index, dir } = sort;
-    // NULLs sort last in both directions, like PostgreSQL's default ordering.
+    // 两个方向都把 NULL 排在最后，与 PostgreSQL 的默认排序一致。
     return [...rows].sort((a, b) => {
       const left = a[index];
       const right = b[index];
@@ -114,7 +114,7 @@ export function ResultGrid({
     window.setTimeout(() => setCopied(false), 1200);
   }, [selected, sortedRows]);
 
-  // Keyboard navigation inside the grid.
+  // 表格内的键盘导航。
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (!selected) {
       if (["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight"].includes(event.key)) {
@@ -204,7 +204,7 @@ export function ResultGrid({
         aria-label={t("grid.label")}
       >
         <div style={{ width: totalWidth, minWidth: "100%", position: "relative" }}>
-          {/* Header */}
+          {/* 表头 */}
           <div
             className="sticky top-0 z-10 flex bg-chrome text-[11.5px] font-medium text-ink-soft"
             style={{ height: HEADER_HEIGHT }}
@@ -250,7 +250,7 @@ export function ResultGrid({
             ))}
           </div>
 
-          {/* Rows */}
+          {/* 数据行 */}
           <div
             style={{
               height: virtualizer.getTotalSize(),
@@ -323,7 +323,7 @@ export function ResultGrid({
         </div>
       </div>
 
-      {/* Selection footer: shows the full value of the focused cell. */}
+      {/* 选中信息栏：显示当前聚焦单元格的完整值。 */}
       <div className="flex h-[27px] shrink-0 items-center gap-3 border-t border-line bg-chrome px-3 text-[11px] text-ink-muted">
         {selected ? (
           <>

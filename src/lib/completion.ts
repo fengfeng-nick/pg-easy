@@ -3,12 +3,10 @@ import type { SQLNamespace } from "@codemirror/lang-sql";
 import { api, type Catalog } from "@/lib/ipc";
 
 /**
- * SQL completion for one connection.
+ * 单条连接的 SQL 补全。
  *
- * Tables come from the catalog up front; columns are fetched lazily per
- * relation and cached for the connection's lifetime. On a database with a
- * thousand tables, loading every column at connect would cost more than
- * opening the session itself.
+ * 表在连接时就从目录一次取好；列按关系懒加载，并在连接的整个生命周期内
+ * 缓存。在有一千张表的库上，连接时加载所有列的开销会比打开会话本身还大。
  */
 export class CompletionData {
   private columns = new Map<string, string[]>();
@@ -21,9 +19,8 @@ export class CompletionData {
   ) {}
 
   /**
-   * Notifies when lazily loaded columns change the suggestions. The editor
-   * subscribes and rebuilds its namespace, so the first `alias.` completes
-   * columns on the second attempt rather than the tenth.
+   * 懒加载的列发生变化时发出通知。编辑器订阅它并重建命名空间，这样第一次
+   * 敲 `alias.` 时也许补不出列，第二次就能补出来，而不必等到第十次。
    */
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -48,12 +45,12 @@ export class CompletionData {
         this.listeners.forEach((listener) => listener());
       })
       .catch(() => {
-        // Falls back to table-level completion; the query is unaffected.
+        // 退回到表级别补全；查询本身不受影响。
       })
       .finally(() => this.inflight.delete(key));
   }
 
-  /** The `{ schema: { table: [columns] } }` shape lang-sql takes. */
+  /** lang-sql 接收的 `{ schema: { table: [columns] } }` 结构。 */
   namespace(): SQLNamespace | undefined {
     if (!this.catalog) return undefined;
     const namespace: Record<string, Record<string, readonly string[]>> = {};
@@ -79,9 +76,8 @@ export class CompletionData {
   }
 
   /**
-   * Layered after lang-sql's own sources. It warms any relation named after
-   * FROM/JOIN so its columns arrive in the background, and answers
-   * `qualifier.` for aliases and table names.
+   * 叠在 lang-sql 自带的数据源之后。它会把 FROM/JOIN 后面提到的关系预热，
+   * 让列在后台到达；对别名和表名响应 `qualifier.`。
    */
   completionSource = (context: CompletionContext): CompletionResult | null => {
     if (!this.catalog) return null;

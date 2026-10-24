@@ -176,8 +176,8 @@ export function TableView({ view }: { view: Extract<View, { kind: "table" }> }) 
             rows={data.rows ?? []}
             canLoadMore={(data.rows?.length ?? 0) >= PAGE}
             loadingMore={loadingMore}
-            // The first page is read unordered; once paged, pages are ordered
-            // by the primary key so an offset never repeats or skips a row.
+            // 第一页不带排序读取；一旦开始分页，各页按主键排序，
+            // 这样 offset 不会重复或跳过某一行。
             sortable={false}
             loadedCount={PAGE}
             onLoadMore={async () => {

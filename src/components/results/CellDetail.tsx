@@ -72,8 +72,7 @@ export function CellDetail({ column, value, anchor, onClose }: Props) {
     window.setTimeout(() => setCopied(false), 1200);
   };
 
-  // Anchored beside the cell when the cell is on screen, otherwise pinned to
-  // the right edge like an inspector.
+  // 单元格在可视区域内时贴在它旁边，否则固定在右边缘，像检视器那样。
   const style: React.CSSProperties =
     anchor.width === 0
       ? { right: 16, bottom: 44, width: 460, maxHeight: "60vh" }

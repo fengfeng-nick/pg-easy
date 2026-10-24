@@ -1,7 +1,6 @@
-//! Reads `pg_catalog` for the sidebar and the SQL editor's completion list.
-//! A handful of round trips per database keeps the sidebar responsive even
-//! with hundreds of relations, and everything is filtered by the current
-//! user's privileges so the tree never lists something it cannot open.
+//! 为侧边栏和 SQL 编辑器的补全列表读取 `pg_catalog`。
+//! 每个库只做几次往返，几百个关系也能保持侧边栏响应迅速；所有内容都按当前
+//! 用户的权限过滤，树里永远不会列出打不开的对象。
 
 use std::collections::HashMap;
 
@@ -192,8 +191,8 @@ fn int(row: &[Option<String>], index: usize) -> i64 {
     text(row, index).parse().unwrap_or_default()
 }
 
-/// `'public', 'sales'` — the catalog queries take no parameters on the simple
-/// protocol, so names are quoted as literals.
+/// `'public', 'sales'`——简单协议下的目录查询不接受参数，所以名字以字面量
+/// 形式加引号。
 fn sql_list(names: &[&str]) -> String {
     if names.is_empty() {
         return "''".into();
@@ -205,8 +204,8 @@ fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
-/// Quotes an identifier only when PostgreSQL would otherwise fold its case or
-/// reject it, so generated SQL reads like hand-written SQL.
+/// 只在 PostgreSQL 否则会折叠大小写或拒收时才给标识符加引号，这样生成的 SQL
+/// 读起来像手写的 SQL。
 pub fn quote_ident(ident: &str) -> String {
     if ident
         .chars()

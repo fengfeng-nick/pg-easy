@@ -1,6 +1,6 @@
-//! End-to-end checks of the app's own PostgreSQL client against a real server.
+//! 应用自带 PostgreSQL 客户端对真实服务器的端到端检查。
 //!
-//! These are skipped unless `PG_TEST_URL` is set, e.g.
+//! 除非设置了 `PG_TEST_URL`，否则跳过，例如
 //! `PG_TEST_URL=postgresql://user:pass@localhost:5432/db cargo test --test wire -- --nocapture`
 
 use std::time::{Duration, Instant};
@@ -55,7 +55,7 @@ async fn logs_in_lists_rows_and_reports_tags() {
         .unwrap();
     assert_eq!(output.tag, "INSERT 0 3");
 
-    // A failing statement keeps the connection usable and reports its SQLSTATE.
+    // 失败的语句不影响连接继续使用，并报告它的 SQLSTATE。
     let (error, _) = conn.run("select * from nope", 100).await.unwrap_err();
     assert_eq!(error.code.as_deref(), Some("42P01"));
 
@@ -115,7 +115,7 @@ async fn cancel_stops_a_long_statement() {
     assert!(started.elapsed() < Duration::from_secs(5));
     assert_eq!(conn.backend_pid, pid);
 
-    // The session survives the cancel.
+    // 会话在取消之后仍然存活。
     let output = conn.run("select 42", 10).await.unwrap();
     assert_eq!(output.rows.unwrap().values[0][0].as_deref(), Some("42"));
 }
@@ -139,7 +139,7 @@ async fn scripts_report_transaction_state() {
     conn.run("rollback", 10).await.unwrap();
     assert_eq!(conn.status(), b'I');
 
-    // Notices raised by a statement are collected for the UI.
+    // 语句发出的通知会被收集起来交给界面。
     conn.run("do $$ begin raise notice 'hello from a notice'; end $$", 10)
         .await
         .unwrap();
@@ -151,8 +151,8 @@ async fn scripts_report_transaction_state() {
 #[tokio::test]
 async fn tls_negotiation_follows_the_mode() {
     let Some(params) = params() else { return };
-    // The test server runs without TLS, which is exactly the `prefer` fallback
-    // path: the server must answer 'N' and the connection continues in clear.
+    // 测试服务器不启用 TLS，这正好是 `prefer` 的回退路径：服务器必须回 'N'，
+    // 连接以明文继续。
     let prefer = ConnectParams {
         ssl: SslMode::Prefer,
         ..params.clone()
@@ -163,14 +163,13 @@ async fn tls_negotiation_follows_the_mode() {
         "prefer falls back to clear text, and the harness allows that channel"
     );
 
-    // Without the user's say-so the login is refused rather than leaking the
-    // password over the downgraded channel.
+    // 没有用户的首肯，登录会被拒绝，而不是在降级信道上泄漏密码。
     let mut startup = testing::startup_params(&prefer);
     startup.ssl_verified = false;
     let error = pg::connect(stream, &startup).await.err().expect("refused");
     assert_eq!(error.kind, "auth");
 
-    // With it, the user's password goes over the clear channel the server chose.
+    // 有了首肯，用户的密码就走服务器选择的明文信道。
     let stream = testing::open_stream(&prefer).await.unwrap();
     let mut conn = pg::connect(stream, &testing::startup_params(&prefer))
         .await

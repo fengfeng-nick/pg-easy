@@ -11,8 +11,8 @@ use crate::pg::Connection;
 use crate::protocol::ConnectionStatus;
 use crate::settings::Settings;
 
-/// One database session. Each workspace owns its own session, so an open
-/// transaction in one tab never leaks into another.
+/// 一条数据库会话。每个工作区拥有自己的会话，一个标签页里打开的事务永远
+/// 不会渗到另一个。
 pub struct Session {
     pub id: String,
     #[allow(dead_code)]
@@ -21,9 +21,8 @@ pub struct Session {
     pub user: String,
     pub server_version: String,
     pub conn: Connection,
-    /// A statement has been handed to this session and has not returned yet.
-    /// The session itself is never locked for the whole statement, so this is
-    /// what tells a second command to wait instead of interleaving on the wire.
+    /// 已有一条语句交给这个会话且尚未返回。会话自身在整条语句期间都不会被
+    /// 锁住，所以正是它告诉第二条命令该等待，而不是在协议上交错发送。
     pub busy: bool,
     pub backend_pid: i32,
     pub idle_since: Instant,
@@ -45,10 +44,10 @@ impl Session {
     }
 }
 
-/// Everything needed to talk to (or stop) one session.
+/// 与一条会话通信（或停止它）所需的全部内容。
 pub struct SessionHandle {
     pub slot: Arc<Mutex<SessionSlot>>,
-    /// One token per running statement, replaced when a statement starts.
+    /// 每条运行中的语句一个 token，语句开始时被替换。
     pub cancel: Arc<Mutex<CancellationToken>>,
     pub target: (String, u16),
 }
@@ -91,14 +90,12 @@ impl AppState {
         handle
     }
 
-    /// Takes the session out of the table and closes it. Returns whether it
-    /// was open.
+    /// 把会话从表中取出并关闭。返回它之前是否是打开的。
     pub async fn remove(&self, id: &str) -> bool {
         let handle = self.sessions.lock().await.remove(id);
         match handle {
             Some(handle) => {
-                // Stops whatever is running, then drops the stream so the
-                // server sees the disconnect right away.
+                // 先停掉正在跑的东西，再丢弃流，让服务器立刻看到断开。
                 handle.cancel.lock().await.cancel();
                 drop(handle.slot.lock().await);
                 true

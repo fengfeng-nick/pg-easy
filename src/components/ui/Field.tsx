@@ -112,7 +112,7 @@ export function Toggle({ checked, onChange, label, description, id }: ToggleProp
   );
 }
 
-/** A grouped row of exclusive options, used for SSL mode and theme. */
+/** 一组互斥选项，用于 SSL 模式和主题。 */
 export function Segmented<T extends string>({
   value,
   options,

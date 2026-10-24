@@ -3,15 +3,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
-    /// How many rows a single result batch carries over IPC.
+    /// 单次结果批次经 IPC 传多少行。
     pub page_size: usize,
-    /// Hard ceiling before the UI is told to stop paging.
+    /// 通知界面停止分页之前的硬上限。
     pub max_rows: usize,
     pub connect_timeout_ms: u64,
-    /// The session name PostgreSQL reports in `pg_stat_activity`.
+    /// PostgreSQL 在 `pg_stat_activity` 里报告的会话名。
     pub app_name: String,
-    /// UI language (`"en"` or `"zh"`). `None` follows the system language
-    /// until the user picks one; the UI treats an unknown value the same way.
+    /// 界面语言（`"en"` 或 `"zh"`）。`None` 跟随系统语言，直到用户自己选；
+    /// 界面也按同样方式对待未知值。
     pub language: Option<String>,
 }
 

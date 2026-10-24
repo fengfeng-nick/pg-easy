@@ -2,8 +2,8 @@ use std::fmt;
 
 use serde::Serialize;
 
-/// A detail composed here around a token the UI translates (`lib/errors.ts`),
-/// with the values its `{placeholders}` take.
+/// 在这里围绕界面会翻译的 token 组合出的细节（`lib/errors.ts`），连同它的
+/// `{placeholders}` 要填的值。
 #[derive(Debug, Clone, Serialize)]
 pub struct Translated {
     token: String,
@@ -23,45 +23,43 @@ impl Translated {
         self
     }
 
-    /// The token's arguments, e.g. a NOTICE's severity and text.
+    /// token 的参数，例如 NOTICE 的级别和文本。
     pub fn arg_values(&self) -> &[String] {
         &self.args
     }
 }
 
-/// Everything the UI needs to explain a failure, split into a stable
-/// machine-readable kind and a human-facing message.
+/// 界面解释一次失败所需的全部信息，拆成稳定的机器可读类型和人读的消息。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppError {
     pub kind: &'static str,
-    /// A stable token the UI translates (see `lib/errors.ts`), or text from
-    /// the PostgreSQL server, which the UI shows as-is.
+    /// 界面会翻译的稳定 token（见 `lib/errors.ts`），或来自 PostgreSQL
+    /// 服务器的文本，后者界面原样显示。
     pub message: String,
-    /// Values for `message`'s `{placeholders}`, in the order they appear.
+    /// `message` 的 `{placeholders}` 值，按出现顺序排列。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub args: Option<Vec<String>>,
-    /// Free text (a server or I/O message), or a `Translated` token for a
-    /// detail this app composed around one.
+    /// 自由文本（服务器或 I/O 消息），或本应用围绕某个细节组合出的
+    /// `Translated` token。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub position: Option<usize>,
-    /// 0-based index of the statement that failed.
+    /// 失败语句从 0 开始的索引。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub statement_index: Option<usize>,
-    /// Transaction state after the failure, so the UI can warn about aborted
-    /// transactions without polling.
+    /// 失败之后的事务状态，界面据此提示事务已中止，不必轮询。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tx_status: Option<&'static str>,
-    /// Statements that completed before the failure.
+    /// 失败之前已完成的语句。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub results: Option<Vec<crate::protocol::StatementResult>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub results_duration_ms: Option<f64>,
-    /// Rows the failing statement had already received.
+    /// 失败语句此前已经收到的行。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rows: Option<crate::protocol::StatementResult>,
 }
@@ -88,12 +86,12 @@ impl AppError {
         self
     }
 
-    /// Detail for an I/O failure that names the file involved: `{path}: {error}`.
+    /// 会点出涉及文件的 I/O 失败细节：`{path}: {error}`。
     pub fn with_io_path(self, path: &std::path::Path, error: &dyn std::error::Error) -> Self {
         self.with_token_detail("io_path", [path.display().to_string(), error.to_string()])
     }
 
-    /// Placeholder values for `message`'s `{placeholders}`.
+    /// `message` 的 `{placeholders}` 占位值。
     pub fn with_args<I, A>(mut self, args: I) -> Self
     where
         I: IntoIterator<Item = A>,
@@ -103,8 +101,8 @@ impl AppError {
         self
     }
 
-    /// A detail composed here around a token the UI translates, e.g. the
-    /// file path in "could not read the root certificate".
+    /// 在这里围绕界面会翻译的 token 组合出的细节，例如“读取根证书失败”里的
+    /// 文件路径。
     pub fn with_token_detail<I, A>(self, token: &str, args: I) -> Self
     where
         I: IntoIterator<Item = A>,

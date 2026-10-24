@@ -28,7 +28,7 @@ export type Connection = {
   catalogError: string | null;
   browsing: boolean;
   open: boolean;
-  /** Set while a dump streams out of this connection. */
+  /** 从这条连接导出转储期间置位。 */
   exporting?: { done: number; total: number } | null;
 };
 
@@ -40,12 +40,12 @@ export type ResultState = {
     detail?: string;
     code?: string;
     position?: number;
-    /** 0-based index of the statement the failure belongs to. */
+    /** 失败所属语句从 0 开始的索引。 */
     statementIndex?: number;
     kind: AppError["kind"];
-    /** Placeholder values for a translated backend message. */
+    /** 用于翻译后端消息的占位值。 */
     args?: (string | number)[];
-    /** Rows the failing statement had already received. */
+    /** 失败的那条语句此前已经收到的行。 */
     rows?: StatementResult;
   } | null;
   startedAt: number;
@@ -60,7 +60,7 @@ export type Tab = {
   sql: string;
   dirty: boolean;
   cursor: number;
-  /** Selected text, kept in sync by the editor for "run selection". */
+  /** 选中的文本，由编辑器同步维护，供“执行选中部分”使用。 */
   selection: string | null;
   result: ResultState | null;
   activeResult: number;
@@ -71,7 +71,7 @@ export type Toast = {
   tone: "info" | "success" | "warn" | "error";
   title: string;
   detail?: string;
-  /** How a translated toast re-renders itself when the language changes. */
+  /** 已翻译的 toast 在语言变化时如何自我重渲染。 */
   retitle?: (t: Translate) => { title: string; detail?: string };
 };
 
@@ -81,13 +81,18 @@ export type View =
   | { kind: "settings" }
   | { kind: "welcome" };
 
-/** Open export dialog: the whole connection, or the listed `schema.table`s. */
+/** 打开导出对话框：整个连接，或者列出的 `schema.table`。 */
 export type ExportRequest = {
   connectionId: string;
-  /** `null` exports the whole database. */
+  /** `null` 表示导出整个数据库。 */
   schema: string | null;
-  /** `schema.table` keys; only read when `schema` is null and `scope` is given. */
+  /** `schema.table` 键；只在 `schema` 为 null 且给了 `scope` 时读取。 */
   scope: string[] | null;
+};
+
+/** 打开导入对话框：把选中的 .sql 文件回放到这个连接里。 */
+export type ImportRequest = {
+  connectionId: string;
 };
 
 type AppStore = {
@@ -113,6 +118,7 @@ type AppStore = {
   toasts: Toast[];
   commandPaletteOpen: boolean;
   exportRequest: ExportRequest | null;
+  importRequest: ImportRequest | null;
 
 
   setBooted: (booted: boolean) => void;
@@ -138,24 +144,23 @@ type AppStore = {
   activateTab: (id: string) => void;
 
   setView: (view: View) => void;
-  /** `retitle` is preferred over `title` for text that should follow the
-   *  language. */
+  /** 需要跟随语言的文本优先用 `retitle` 而非 `title`。 */
   pushToast: (toast: Omit<Toast, "id" | "title"> & { title?: string }) => string;
   dismissToast: (id: string) => void;
   openCommandPalette: (open: boolean) => void;
   openExport: (request: ExportRequest | null) => void;
+  openImport: (request: ImportRequest | null) => void;
 };
 
 let tabSeq = 0;
 const nextTabId = () => `tab-${++tabSeq}`;
 
-/** A `t` bound to one language, for code that runs outside React. */
+/** 绑定到某一语言的 `t`，供 React 之外运行的代码使用。 */
 export function translateTo(language: Language): Translate {
   return (key, vars) => translate(language, key, vars);
 }
 
-/** The starter query, in the user's language: the comment is prose, the SQL
- *  itself is not translated. */
+/** 起始查询，使用用户的语言：其中的注释是自然语言，SQL 本身不翻译。 */
 function newTabSql(language: Language) {
   return `-- ${translate(language, "workbench.query")} 1
 select now() as started_at,
@@ -187,6 +192,7 @@ export const useApp = create<AppStore>((set, get) => ({
   toasts: [],
   commandPaletteOpen: false,
   exportRequest: null,
+  importRequest: null,
 
   setBooted: (booted) => set({ booted }),
   setTheme: (theme) => set({ theme }),
@@ -197,15 +203,14 @@ export const useApp = create<AppStore>((set, get) => ({
     const nextQuery = translate(language, "workbench.query");
     set({
       language,
-      // An untouched starter script follows the language; one the user has
-      // edited keeps exactly what they wrote.
+      // 没被改过的起始脚本跟随语言；用户改过之后则完全保留他们写的内容。
       tabs: before.tabs.map((tab) =>
         !tab.dirty && tab.sql === newTabSql(before.language)
           ? { ...tab, sql: newTabSql(language), title: tab.title.replace(previousQuery, nextQuery) }
           : tab,
       ),
     });
-    // Toasts still on screen translate themselves.
+    // 还留在屏幕上的 toast 会自己翻译。
     const t = translateTo(language);
     set((state) => ({
       toasts: state.toasts.map((toast) =>
@@ -244,7 +249,7 @@ export const useApp = create<AppStore>((set, get) => ({
         ),
         tabs,
         activeTabId,
-        // A tabless window has nothing to show but the welcome screen.
+        // 没有标签页的窗口只能显示欢迎页。
         view:
           state.view.kind === "table" && state.view.connectionId === id
             ? { kind: activeTabId ? "editor" : "welcome" }
@@ -307,7 +312,7 @@ export const useApp = create<AppStore>((set, get) => ({
       const tabs = state.tabs.filter((tab) => tab.id !== id);
       let activeTabId = state.activeTabId;
       if (state.activeTabId === id) {
-        // Focus the tab that slid into the closed tab's place, like editors do.
+        // 焦点落到滑进被关闭位置的标签页，和编辑器一致。
         activeTabId = (tabs[index] ?? tabs[index - 1] ?? null)?.id ?? null;
       }
       return {
@@ -323,7 +328,7 @@ export const useApp = create<AppStore>((set, get) => ({
   activateTab: (id) => set({ activeTabId: id, view: { kind: "editor" } }),
 
   setView: (view) => {
-    // "editor" is a request to show the current tab, not a tabless state.
+    // "editor" 是要求显示当前标签页，不是无标签页状态。
     if (view.kind === "editor" && !get().activeTabId) {
       const last = get().tabs.at(-1);
       set(last ? { view, activeTabId: last.id } : { view: { kind: "welcome" } });
@@ -334,8 +339,7 @@ export const useApp = create<AppStore>((set, get) => ({
 
   pushToast: (toast) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    // The toast is shown when it was raised; if the language changes while it
-    // is still on screen it translates itself.
+    // toast 在产生时就显示了；如果它还在屏幕上时语言变了，它会自己翻译。
     const t = translateTo(get().language);
     const label = toast.retitle?.(t) ?? { title: toast.title ?? "" };
     set((state) => ({ toasts: [...state.toasts.slice(-3), { ...toast, ...label, id }] }));
@@ -351,6 +355,8 @@ export const useApp = create<AppStore>((set, get) => ({
   openCommandPalette: (commandPaletteOpen) => set({ commandPaletteOpen }),
 
   openExport: (exportRequest) => set({ exportRequest }),
+
+  openImport: (importRequest) => set({ importRequest }),
 }));
 
 export function useActiveTab(): Tab | null {

@@ -1,5 +1,5 @@
-//! Data returned to (and accepted from) the UI. Field names are camelCase so
-//! the TypeScript side needs no mapping layer.
+//! 返回给界面（以及从界面接受）的数据。字段名是 camelCase，TypeScript 侧
+//! 因此不需要映射层。
 
 use std::collections::HashMap;
 
@@ -16,22 +16,21 @@ pub enum ValueKind {
     Bool,
     Number,
     Text,
-    /// json/jsonb — rendered as text but with inline expansion available.
+    /// json/jsonb —— 按文本渲染，但可以就地展开。
     Json,
-    /// bytea — rendered as a hex preview, never as raw bytes.
+    /// bytea —— 显示十六进制预览，绝不显示原始字节。
     Binary,
     Time,
     Uuid,
     Array,
-    /// A type the server reported only by OID, e.g. a domain over json.
+    /// 服务器只按 OID 报告的类型，例如基于 json 的域。
     Other,
 }
 
 impl ValueKind {
     pub fn of(ty: &Type) -> Self {
-        // pg_type.typtype for array types is 'b' on the element type, but the
-        // name convention (leading underscore) plus the driver's built-in
-        // lookup is reliable enough here.
+        // 数组类型在 pg_type.typtype 里是元素类型的 'b'，但命名约定（前导
+        // 下划线）加上驱动的内置查找在这里已经足够可靠。
         if ty.name().starts_with('_') || matches!(ty.kind(), tokio_postgres::types::Kind::Array(_))
         {
             return ValueKind::Array;
@@ -52,9 +51,9 @@ impl ValueKind {
         }
     }
 
-    /// For OIDs outside the driver's built-in table, which is all a simple
-    /// query result tells us. Guessing by OID would be wrong on a server with
-    /// custom types, so anything unusual stays plain text.
+    /// 用于驱动内置表之外的 OID，而简单查询的结果只能提供这么多信息。按
+    /// OID 猜测在有自定义类型的服务器上会出错，所以任何不常见的东西都按
+    /// 纯文本处理。
     pub fn of_oid(oid: u32) -> Self {
         match oid {
             16 => ValueKind::Bool,
@@ -72,8 +71,8 @@ impl ValueKind {
     }
 }
 
-/// Names for the OIDs a typical query returns; used for the column header's
-/// type label when the driver cannot map the OID to a `Type`.
+/// 普通查询会返回的 OID 对应的名字；当驱动无法把 OID 映射成 `Type` 时，
+/// 用于列表头的类型标签。
 pub fn type_name_of_oid(oid: u32) -> String {
     let name = match oid {
         16 => "bool",
@@ -128,31 +127,30 @@ pub struct Column {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatementResult {
-    /// Position of the statement in the script, 0-based.
+    /// 语句在脚本中的位置，从 0 开始。
     pub index: usize,
     pub sql: String,
-    /// Byte offset of the statement in the script; the UI maps errors and
-    /// result tabs back onto the editor with it.
+    /// 语句在脚本中的字节偏移；界面用它把错误和结果标签页映射回编辑器。
     pub start: usize,
     pub has_rows: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub columns: Option<Vec<Column>>,
-    /// Row-major values encoded as strings. `null` means SQL NULL, an empty
-    /// string means an empty value — the two must not be conflated.
+    /// 以字符串编码的行主序值。`null` 表示 SQL NULL，空字符串表示空值
+    /// ——两者不能混为一谈。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rows: Option<Vec<Vec<Option<String>>>>,
-    /// Rows the statement modified (INSERT/UPDATE/DELETE/MOVE...).
+    /// 语句影响的行数（INSERT/UPDATE/DELETE/MOVE……）。
     pub affected: u64,
-    /// Rows a SELECT returned.
+    /// SELECT 返回的行数。
     pub returned: u64,
-    /// The command tag PostgreSQL reports ("UPDATE 3"), when known.
+    /// PostgreSQL 报告的命令标签（"UPDATE 3"），已知时给出。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tag: Option<String>,
     pub duration_ms: f64,
-    /// More rows arrived than the display limit, so the grid holds a prefix.
+    /// 到达的行数超过显示上限，表格只持有前缀部分。
     pub truncated: bool,
-    /// RAISE NOTICE / WARNING messages raised by this statement, as tokens
-    /// the UI formats (`notice`, `notice_at`).
+    /// 这条语句抛出的 RAISE NOTICE / WARNING 消息，以界面会格式化的 token
+    /// 形式给出（`notice`、`notice_at`）。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notices: Vec<Translated>,
 }
@@ -162,14 +160,14 @@ pub struct StatementResult {
 pub struct ExecResult {
     pub results: Vec<StatementResult>,
     pub total_duration_ms: f64,
-    /// Transaction state when the script finished: idle, intransaction, inerror.
+    /// 脚本结束时的事务状态：idle、intransaction、inerror。
     pub tx_status: String,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Page {
-    /// Rows already held by the grid when this page was requested.
+    /// 请求这一页时表格里已经持有的行数。
     pub offset: usize,
     pub limit: usize,
     pub rows: Vec<Vec<Option<String>>>,
@@ -237,12 +235,12 @@ pub struct RelationInfo {
     pub oid: u32,
     pub schema: String,
     pub name: String,
-    /// table, view, matview, partitioned, foreign, sequence
+    /// table、view、matview、partitioned、foreign、sequence
     pub kind: String,
     pub columns: i32,
     pub est_rows: i64,
     pub size: String,
-    /// 100 is "owned by the database"; 0 means unanalyzed.
+    /// 100 表示“被数据库拥有”；0 表示未分析。
     pub last_autoanalyze: Option<String>,
 }
 
@@ -262,14 +260,14 @@ pub struct ColumnInfo {
 pub struct RoutineInfo {
     pub schema: String,
     pub name: String,
-    /// function, procedure, or aggregate
+    /// function、procedure 或 aggregate
     pub kind: String,
     pub arguments: String,
     pub returns: String,
 }
 
-/// How a dump is packaged: one SQL script, or a zip with `schema.sql` and
-/// `data.sql`.
+/// 转储如何打包：单个 SQL 脚本，或一个含 `schema.sql` 与 `data.sql` 的
+/// zip。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DumpFormat {
@@ -277,15 +275,14 @@ pub enum DumpFormat {
     Zip,
 }
 
-/// What the export dialog asks for.
+/// 导出对话框询问的内容。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DumpOptions {
-    /// Database being exported; names the generated file and appears in the
-    /// script header.
+    /// 正在导出的数据库；它给生成的文件命名，并出现在脚本头部。
     pub database: String,
     pub format: DumpFormat,
-    /// `false` exports the structure only.
+    /// `false` 时只导出结构。
     pub include_data: bool,
 }
 
@@ -293,8 +290,45 @@ pub struct DumpOptions {
 #[serde(rename_all = "camelCase")]
 pub struct Catalog {
     pub schemas: Vec<SchemaInfo>,
-    /// Keyed by schema name.
+    /// 以 schema 名为键。
     pub relations: HashMap<String, Vec<RelationInfo>>,
     pub routines: HashMap<String, Vec<RoutineInfo>>,
     pub fetched_at: u64,
+}
+
+/// 导入对话框询问的内容。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportOptions {
+    /// 把整个脚本包在一个事务里，失败时不留下任何残留。对于 PostgreSQL 拒绝
+    /// 在事务中执行的语句（例如 `create index concurrently`）应关闭它。
+    #[serde(default = "yes")]
+    pub in_transaction: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// 用户选中的 SQL 文件，在读取之前先描述出来。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickedSqlFile {
+    pub path: String,
+    pub name: String,
+    pub bytes: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportOutcome {
+    /// 文件包含的语句数，不含注释和空语句。
+    pub statements: usize,
+    /// `COPY` 块以及 INSERT、UPDATE、DELETE 写入的行数。
+    pub rows: u64,
+    /// 经 `COPY` 到达的行数，是 `rows` 的一部分。
+    pub copied_rows: u64,
+    /// 读取的文件体积。
+    pub bytes: u64,
+    pub duration_ms: f64,
 }

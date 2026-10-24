@@ -55,7 +55,7 @@ export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
 });
 
 type IconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  /** Used as the tooltip and the accessible name. */
+  /** 用作提示文本和无障碍名称。 */
   label: string;
   active?: boolean;
   size?: "sm" | "md";

@@ -1,9 +1,8 @@
-//! Column types as the UI presents them.
+//! 界面呈现列类型的方式。
 //!
-//! The simple protocol delivers every value as text, so the type only has to
-//! say how to *show* a cell (align numbers, colour JSON, italicise NULLs) and
-//! what to call the column. The mapping is restricted to built-in OIDs;
-//! anything else is text, which is never wrong about the bytes on screen.
+//! 简单协议把每个值都作为文本送达，所以类型只需要说明如何*显示*一个单元格
+//! （数字对齐、JSON 着色、NULL 用斜体）以及列该怎么称呼。映射只覆盖内置
+//! OID；其他一切都是文本，而这在屏幕上显示字节这件事上永远不会错。
 
 use fallible_iterator::FallibleIterator;
 use postgres_protocol::message::backend::{DataRowBody, RowDescriptionBody};
@@ -34,8 +33,8 @@ pub fn describe(body: &RowDescriptionBody) -> Result<Vec<Column>, std::io::Error
     Ok(columns)
 }
 
-/// Uses `tokio-postgres`'s table of built-in types for the name, which is
-/// complete for everything the server reports without a catalog lookup.
+/// 名称取自 `tokio-postgres` 内置类型表，对服务器不经目录查询就报告的一切
+/// 都足够完整。
 fn describe_oid(oid: u32) -> (String, ValueKind) {
     match tokio_postgres::types::Type::from_oid(oid) {
         Some(ty) => (ty.name().to_string(), ValueKind::of(&ty)),
@@ -43,7 +42,7 @@ fn describe_oid(oid: u32) -> (String, ValueKind) {
     }
 }
 
-/// Iterates the row's values in column order.
+/// 按列顺序遍历该行的值。
 pub fn read_row(body: &DataRowBody) -> Result<Vec<Option<String>>, std::io::Error> {
     let buffer = body.buffer();
     let mut out = Vec::new();

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  Check,
   ChevronRight,
   Database,
   Download,
@@ -13,20 +14,24 @@ import {
   Table2,
   Trash2,
   Unplug,
+  Upload,
   X,
 } from "lucide-react";
 import {
   api,
   type Catalog,
+  type DatabaseInfo,
   type RelationInfo,
   type SavedConnection,
 } from "@/lib/ipc";
 import {
   closeConnection,
   disconnectSaved,
+  listDatabases,
   openConnection,
   refreshCatalog,
   removeSavedConnection,
+  switchDatabase,
   tableKey,
 } from "@/lib/actions";
 import { describeError } from "@/lib/errors";
@@ -36,7 +41,7 @@ import { isMac, timeAgo } from "@/lib/platform";
 import { useApp, type Connection, type View } from "@/lib/store";
 import { IconButton } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/Dialog";
-import { Menu, MenuItem, MenuSeparator } from "@/components/ui/Menu";
+import { Menu, MenuItem, MenuLabel, MenuSeparator } from "@/components/ui/Menu";
 
 export function Sidebar({
   onNewConnection,
@@ -124,6 +129,7 @@ function OpenConnectionRow({
   const setView = useApp((state) => state.setView);
   const view = useApp((state) => state.view);
   const openExport = useApp((state) => state.openExport);
+  const openImport = useApp((state) => state.openImport);
   const pushToast = useApp((state) => state.pushToast);
   const t = useT();
 
@@ -183,6 +189,9 @@ function OpenConnectionRow({
               }
             >
               {t("sidebar.exportDatabase")}
+            </MenuItem>
+            <MenuItem icon={<Upload />} onSelect={() => openImport({ connectionId: connection.id })}>
+              {t("sidebar.importSql")}
             </MenuItem>
             <MenuItem
               icon={<Pencil />}
@@ -247,9 +256,8 @@ function OpenConnectionRow({
   );
 }
 
-/** What the tree under a connection shows: each schema with the relations
- *  the filter keeps. Without a filter, sequences stay out of the way; typing
- *  finds them along with everything else. */
+/** 连接下的树显示什么：每个 schema 及过滤后保留的关系。没有过滤条件时
+ *  序列不占位置；一旦输入关键字，它们会和其他对象一起被找到。 */
 export function treeGroups(catalog: Catalog | null, filter: string) {
   if (!catalog) return [];
   const query = filter.trim().toLowerCase();
@@ -313,9 +321,11 @@ function ConnectionTree({
 
   if (!connection.catalog) return null;
   const matchCount = groups.reduce((sum, group) => sum + group.tables.length, 0);
+  const empty = !filter && matchCount === 0;
 
   return (
     <div className="pb-1">
+      <DatabaseSwitcher connection={connection} />
       <div className="py-1 pl-[28px] pr-2">
         <input
           value={filter}
@@ -327,6 +337,12 @@ function ConnectionTree({
       </div>
       {filter && matchCount === 0 && (
         <div className="py-1 pl-[34px] text-[11px] text-ink-muted">{t("sidebar.noTablesMatch")}</div>
+      )}
+      {empty && (
+        <div className="py-1 pl-[34px] pr-3 text-[11px] leading-snug text-ink-muted">
+          <p>{t("sidebar.noTablesHere", { database: connection.database })}</p>
+          <p className="mt-0.5 text-ink-faint">{t("sidebar.noTablesHint")}</p>
+        </div>
       )}
       {groups.map((group) =>
         group.tables.length === 0 ? null : (
@@ -345,6 +361,91 @@ function ConnectionTree({
       <div className="px-3 pl-[34px] pt-1 text-[10.5px] text-ink-faint">
         {t("sidebar.updatedAgo", { when: timeAgo(connection.catalog.fetchedAt) })}
       </div>
+    </div>
+  );
+}
+
+/** 同一台服务器上换库。表只属于一个库，连着 `postgres` 时别的库里的表
+ *  不会出现，所以空库要能直接切过去。 */
+function DatabaseSwitcher({ connection }: { connection: Connection }) {
+  const t = useT();
+  const [databases, setDatabases] = useState<DatabaseInfo[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [switching, setSwitching] = useState(false);
+
+  const load = async () => {
+    setFailed(false);
+    try {
+      setDatabases(await listDatabases(connection.id));
+    } catch {
+      setDatabases(null);
+      setFailed(true);
+    }
+  };
+
+  return (
+    <div className="py-1 pl-[28px] pr-2">
+      <Menu
+        width={230}
+        trigger={({ toggle }) => (
+          <button
+            onClick={() => {
+              toggle();
+              void load();
+            }}
+            disabled={switching}
+            title={t("sidebar.switchDatabase")}
+            className="flex h-6 w-full items-center gap-1.5 rounded-[4px] border border-line bg-raised/70 px-1.5 text-left text-[11.5px] text-ink hover:border-line-strong disabled:opacity-60"
+          >
+            <Database className="size-3 shrink-0 text-ink-muted" strokeWidth={1.75} />
+            <span className="min-w-0 flex-1 truncate">{connection.database}</span>
+            {switching ? (
+              <span className="shrink-0 text-[10px] text-ink-faint">
+                {t("sidebar.switchingDatabase")}
+              </span>
+            ) : (
+              <ChevronRight className="size-3 shrink-0 rotate-90 text-ink-faint" />
+            )}
+          </button>
+        )}
+      >
+        <MenuLabel>{t("sidebar.switchDatabase")}</MenuLabel>
+        {databases === null && !failed && (
+          <div className="px-2 py-1 text-[11.5px] text-ink-muted">{t("common.loading")}</div>
+        )}
+        {failed && (
+          <MenuItem icon={<RefreshCw />} onSelect={() => void load()}>
+            {t("sidebar.reload")}
+          </MenuItem>
+        )}
+        {databases?.map((database) => {
+          const current = database.name === connection.database;
+          return (
+            <MenuItem
+              key={database.name}
+              icon={current ? <Check /> : <Database />}
+              disabled={!database.allowConnections || switching}
+              onSelect={() => {
+                if (current) return;
+                setSwitching(true);
+                void switchDatabase(connection.id, database.name).finally(() =>
+                  setSwitching(false),
+                );
+              }}
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 flex-1 truncate">{database.name}</span>
+                {current && (
+                  <span className="shrink-0 text-[10px] text-ink-faint">
+                    {t("sidebar.currentDatabase")}
+                  </span>
+                )}
+                <span className="shrink-0 text-[10px] text-ink-faint">{database.size}</span>
+              </span>
+            </MenuItem>
+          );
+        })}
+      </Menu>
     </div>
   );
 }
@@ -369,17 +470,17 @@ function SchemaGroup({
   const [open, setOpen] = useState(schema === "public");
   const expanded = forceOpen || open;
   const openExport = useApp((state) => state.openExport);
-  // Tables picked with ⌘/Ctrl-click or ⇧-click. Clicking a picked table opens
-  // it and keeps the rest; clicking any other one drops the selection.
+  // 用 ⌘/Ctrl-点击或 ⇧-点击选中的表。点击已选中的表会打开它并保留其余
+  // 选中项；点击任何别的表则放弃整个选择。
   const [picked, setPicked] = useState<string[]>([]);
   const t = useT();
   const [anchor, setAnchor] = useState<string | null>(null);
-  // Only what is still shown: a filter that hides a picked table would leave
-  // its name in the export without the user seeing it.
+  // 只算仍然显示出来的：被过滤条件藏起来的表如果还留在导出列表里，
+  // 用户就看不到它了。
   const pickedTables = tables.filter((relation) => picked.includes(relation.name));
 
-  // Escape clears a selection the way it would in a file list, except inside
-  // a dialog, which closes itself instead.
+  // Escape 清空选择，和文件列表的行为一致；但在对话框里不这样，
+  // 对话框会自己关闭。
   useEffect(() => {
     if (picked.length === 0) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -412,8 +513,8 @@ function SchemaGroup({
       return;
     }
     if (picked.length > 0 && picked.includes(relation.name)) {
-      // Clicking one of several picked tables opens it and keeps the rest,
-      // so the choice survives opening a table to look at it.
+      // 点击多个已选表中的某一个会打开它并保留其余选中项，
+      // 这样打开看一眼不会丢掉刚才的选择。
       onOpen({ kind: "table", connectionId: connection.id, schema, relation: relation.name });
       return;
     }
@@ -517,9 +618,8 @@ function SchemaGroup({
                         openExport({
                           connectionId: connection.id,
                           schema: null,
-                          // Whatever was picked plus the row this menu was
-                          // opened on: right-clicking an unpicked row does
-                          // not open a menu, so one or the other is present.
+                          // 已选中的项加上右键所在的行：未选中的行右键
+                          // 不会弹出菜单，所以两者必有其一是当前项。
                           scope: [
                             ...new Set([
                               ...pickedTables.map((item) => tableKey(schema, item.name)),

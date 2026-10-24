@@ -1,19 +1,22 @@
-//! Small helpers for integration tests that drive the client against a real
-//! server. Compiled into the library (the crate has no separate test target
-//! for internals) but not used by the app itself.
+//! 让集成测试对着真实服务器驱动客户端的若干小工具。编译进库（本 crate 没有
+//! 单独的内部测试目标），但应用本身不使用。
 
 pub use crate::connection::{ConnectParams, SslMode};
-/// The wire client, exposed so integration tests can drive it directly.
+/// 线协议客户端，暴露出来好让集成测试直接驱动。
 pub mod pg {
     pub use crate::pg::*;
 }
-/// The catalog loader, so integration tests can check what the sidebar will
-/// list for a given user.
+/// 目录加载器，集成测试可以用它检查侧边栏会为某个用户列出什么。
 pub mod catalog {
     pub use crate::catalog::load_catalog;
 }
-/// The dumper, so integration tests can round-trip real databases. The
-/// helpers take a [`Session`], which the command layer normally builds.
+/// 导入器，集成测试可以用应用自己的回放路径把转储送进真实服务器。
+pub mod import {
+    pub use crate::import::{plan, run, Plan};
+    pub use crate::protocol::ImportOptions;
+}
+/// 转储器，集成测试可以对真实数据库做往返验证。这些辅助函数接收一个
+/// [`Session`]，通常由命令层构建。
 pub mod dump {
     pub use crate::dump::{plan, run, DumpSink, PlanRelation};
     pub use crate::protocol::{DumpFormat, DumpOptions};
@@ -23,7 +26,7 @@ pub mod dump {
     use crate::connection::ConnectParams;
     use crate::state::Session;
 
-    /// Wraps an already authenticated wire connection as a session.
+    /// 把已认证的线协议连接包装成一条会话。
     pub fn session(
         id: &str,
         params: &ConnectParams,
@@ -52,7 +55,7 @@ pub mod dump {
 use crate::connection;
 use crate::pg::StartupParams;
 
-/// `postgresql://user:pass@host:port/db` — enough of a URL for tests.
+/// `postgresql://user:pass@host:port/db` —— 测试够用的 URL。
 pub fn parse_url(url: &str) -> ConnectParams {
     let rest = url
         .strip_prefix("postgresql://")
@@ -97,7 +100,7 @@ pub async fn open_stream(
     connection::open_stream(params).await.map(|(stream, _)| stream)
 }
 
-/// Like [`open_stream`], also reporting whether the password may be sent.
+/// 类似 [`open_stream`]，同时报告密码是否可以发送。
 pub async fn open_verified(
     params: &ConnectParams,
 ) -> Result<(crate::pg::Stream, bool), crate::error::AppError> {
@@ -110,7 +113,7 @@ pub fn startup_params(params: &ConnectParams) -> StartupParams {
         database: params.database.clone(),
         password: params.password.clone(),
         application_name: params.application_name.clone(),
-        // The server is chosen by the test harness, so no check is made here.
+        // 服务器由测试框架选定，所以这里不做检查。
         ssl_verified: true,
     }
 }

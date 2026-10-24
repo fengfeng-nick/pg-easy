@@ -7,8 +7,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "@/App";
 
-// The window background is painted from CSS; disabling the browser's own
-// context menu keeps the app feeling native. Text inputs keep their menu.
+// 窗口背景由 CSS 绘制；关掉浏览器自带的右键菜单，应用才像原生程序。
+// 文本输入框保留自己的菜单。
 document.addEventListener("contextmenu", (event) => {
   const target = event.target as HTMLElement;
   if (target.closest("input, textarea, [contenteditable='true'], .cm-content")) return;

@@ -9,7 +9,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import type { Catalog } from "@/lib/ipc";
 import { Toggle } from "@/components/ui/Field";
 
-/** Export the whole database, or a selection of its tables. */
+/** 导出整个数据库，或其中选定的若干表。 */
 export function ExportDialog() {
   const request = useApp((state) => state.exportRequest);
   const openExport = useApp((state) => state.openExport);
@@ -22,12 +22,11 @@ export function ExportDialog() {
   const [format, setFormat] = useState<"sql" | "zip">("sql");
   const [running, setRunning] = useState(false);
   /**
-   * Which tables were asked for, frozen when the dialog opens: multi-select
-   * calls pass a list, a table's menu passes one name, a schema passes all of
-   * its tables, and the connection menu passes none (whole database).
+   * 要导出哪些表在对话框打开时冻结：多选调用传一个列表，单表菜单传一个
+   * 名字，schema 菜单传它所有的表，连接菜单不传（整个数据库）。
    */
   const [scope, setScope] = useState<{ tables: string[] | null } | null>(null);
-  /** "Choose tables" mode: the run reads `picked` instead of the frozen list. */
+  /** “选择表”模式：执行时读 `picked`，而不是冻结的那份清单。 */
   const [onlySelection, setOnlySelection] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
@@ -45,8 +44,8 @@ export function ExportDialog() {
 
   useEffect(() => {
     if (!request) return;
-    // Runs when a new request arrives; the catalog filling in later (or the
-    // user flipping a toggle) must not undo anything.
+    // 只在新的请求到达时执行；目录稍后填充完成（或用户切换开关）
+    // 不能撤销任何东西。
     const tables =
       request.scope ?? (request.schema !== null ? allTables(catalog, request.schema) : null);
     setScope(tables === null ? null : { tables });
@@ -54,8 +53,7 @@ export function ExportDialog() {
     setOnlySelection(false);
     setIncludeData(true);
     setFormat("sql");
-    // The saved selection is a list, not a label: the label follows the
-    // language and is derived on render.
+    // 保存下来的选择是列表而不是标签：标签要跟随语言，在渲染时推导。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request]);
 
@@ -81,8 +79,8 @@ export function ExportDialog() {
     if (path !== null) openExport(null);
   };
 
-  // Leaving "choose" mode returns to what the menu asked for: the table it
-  // was, the whole database it was, or the list multi-select handed over.
+  // 退出“选择”模式后回到菜单当初要求的范围：那张表、整个数据库，
+  // 或者多选交过来的列表。
   const toggle = (key: string) =>
     setPicked((current) => {
       const next = new Set(current);

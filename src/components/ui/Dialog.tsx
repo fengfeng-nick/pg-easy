@@ -11,7 +11,7 @@ type DialogProps = {
   children: ReactNode;
   footer?: ReactNode;
   width?: number;
-  /** Escape and backdrop clicks close by default; forms mid-submit turn this off. */
+  /** 默认情况下 Escape 和点击遮罩都会关闭；正在提交的表单会关掉这个行为。 */
   dismissible?: boolean;
   labelId?: string;
 };

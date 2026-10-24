@@ -1,10 +1,9 @@
 import type { Messages } from "./en";
 
 /**
- * Simplified Chinese. Typed as `Messages`, so adding an English string without
- * a translation fails the build. Product names, SQL and server text
- * (command tags, notices, PostgreSQL error messages) stay in their original
- * form on purpose.
+ * 简体中文。类型标注为 `Messages`，所以新增英文条目却不补译文会让构建失败。
+ * 产品名、SQL 和服务器文本（命令标签、通知、PostgreSQL 错误消息）刻意
+ * 保持原样。
  */
 export const zh: Messages = {
   common: {
@@ -78,12 +77,19 @@ export const zh: Messages = {
     reload: "重新加载表",
     refreshSchema: "刷新架构",
     exportDatabase: "导出数据库…",
+    importSql: "导入 SQL 文件…",
     editSavedConnection: "编辑已保存的连接…",
     disconnect: "断开连接",
     disconnectTitle: "断开与 {name} 的连接？",
     disconnectBody: "此连接上尚未提交的内容将被回滚。",
     filterTables: "筛选表",
     noTablesMatch: "没有匹配的表",
+    noTablesHere: "{database} 里没有表",
+    noTablesHint: "表可能在这台服务器的其他数据库里。",
+    switchDatabase: "切换数据库",
+    currentDatabase: "当前",
+    switchingDatabase: "切换中…",
+    switchFailed: "无法打开 {database}",
     updatedAgo: "{when}更新",
     actionsFor: "{name} 的操作",
     exportTables: "导出 {count} 个表…",
@@ -260,6 +266,7 @@ export const zh: Messages = {
     newQuery: "新建查询",
     newConnection: "新建连接…",
     run: "运行语句",
+    import: "导入 SQL 文件…",
     connectToDatabase: "连接到数据库",
   },
 
@@ -295,6 +302,36 @@ export const zh: Messages = {
     structureOnly: "仅结构",
     tablesOfData: "{count} 个表的数据",
     failed: "导出失败",
+  },
+
+  import: {
+    title: "导入 SQL",
+    subtitle: "把 .sql 脚本回放到“{database}”。",
+    chooseFile: "选择 SQL 文件…",
+    changeFile: "换一个文件…",
+    noFile: "尚未选择文件",
+    fileHint:
+      "一段由语句组成的脚本：pg_dump 或本应用导出的转储，或你自己写的脚本。COPY … FROM STDIN 携带的数据也会一并发送。",
+    inTransaction: "在同一个事务中导入",
+    inTransactionHint: "任何一条语句失败，都不会留下任何改动。",
+    noTransactionHint:
+      "每条语句各自提交：失败之前已完成的语句会保留。PostgreSQL 不允许放在事务里的语句（例如 create index concurrently）需要关闭此项。",
+    run: "导入",
+    stop: "停止",
+    running: "正在导入…",
+    progress: "第 {statements}/{total} 条语句 · {rows} 行",
+    doneTitle: "导入完成",
+    doneDetail: "{statements} 条语句 · {rows} 行",
+    failedTitle: "导入失败",
+    failedAtomic: "第 {index} 条语句出错，事务已回滚。",
+    failedPartial: "第 {index} 条语句出错，之前的语句已保留。",
+    failedNoIndex: "脚本未执行完就中断了。",
+    stoppedTitle: "导入已停止",
+    stoppedAtomic: "停在第 {index} 条语句，事务已回滚。",
+    stoppedPartial: "停在第 {index} 条语句，之前的语句已保留。",
+    close: "关闭",
+    pickTitle: "选择要导入的 SQL 文件",
+    unreadable: "无法读取此文件。",
   },
 
   table: {
@@ -401,6 +438,15 @@ export const zh: Messages = {
       tableNotFoundHint: "该表可能不存在，或当前用户没有访问权限。",
       exportCancelled: "导出已取消",
       connectionBusyExport: "此连接正在运行语句。请等待它结束或先取消，然后再导出。",
+      connectionBusySwitch: "此连接正在运行语句。请等待它结束或先取消，然后再切换数据库。",
+      databaseRequired: "需要填写数据库名",
+      connectionBusyImport: "此连接正在运行语句。请等待它结束或先取消，然后再导入。",
+      couldNotReadFile: "无法读取文件",
+      fileNotUtf8: "文件不是 UTF-8 文本，未执行导入",
+      nothingToImport: "文件中没有可执行的语句",
+      copyBlockUnterminated:
+        "COPY 数据块没有以只含 \\. 的一行结束——文件可能被截断了",
+      importCancelled: "导入已取消",
       ioPath: "{path}：{error}",
       connectionLost: "与服务器的连接已断开",
       loginMalformed: "登录质询格式不正确",

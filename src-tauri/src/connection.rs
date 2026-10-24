@@ -1,8 +1,7 @@
-//! Connection parameters, TLS setup and the socket layer.
+//! 连接参数、TLS 配置和 socket 层。
 //!
-//! The wire client reports the server's transaction state from the
-//! `ReadyForQuery` that ends each response, which is what lets the status bar
-//! show an open or aborted transaction without asking the server again.
+//! 线协议客户端从每次响应末尾的 `ReadyForQuery` 里读出服务器的事务状态，
+//! 状态栏因此不必再问服务器就能显示事务是打开还是已中止。
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -30,17 +29,17 @@ pub struct ConnectParams {
     pub password: Option<String>,
     #[serde(default)]
     pub ssl: SslMode,
-    /// PEM bundle. Only consulted for `verify-ca` / `verify-full`; empty means
-    /// "use the operating system trust store".
+    /// PEM 证书包。只在 `verify-ca` / `verify-full` 下读取；为空表示“使用
+    /// 操作系统信任库”。
     #[serde(default)]
     pub ssl_root_cert: Option<String>,
     #[serde(default)]
     pub connect_timeout_ms: Option<u64>,
     #[serde(default)]
     pub application_name: Option<String>,
-    /// Trust the channel for authentication even when TLS is not in use, the
-    /// way libpq's `PGSSLMODE=allow` does. Off by default because SCRAM over a
-    /// clear-text channel is exactly what a downgrade attack looks like.
+    /// 即使没有使用 TLS 也信任该信道用于认证，相当于 libpq 的
+    /// `PGSSLMODE=allow`。默认关闭，因为明文信道上的 SCRAM 正是降级攻击的
+    /// 样子。
     #[serde(default, alias = "allow_unencrypted_password")]
     pub allow_unencrypted_password: bool,
 }
@@ -69,15 +68,13 @@ pub fn effective_host(host: &str) -> &str {
 }
 
 // ---------------------------------------------------------------------------
-// Transport
+// 传输层
 
-/// Opens the TCP socket and, if the mode asks for it, wraps it in TLS.
+/// 打开 TCP socket，如果模式要求就再套上 TLS。
 ///
-/// The flag says whether the password may travel over the result: the channel
-/// is encrypted by a handshake that completed, or the user allowed a
-/// clear-text channel. Certificate checking is a separate guarantee and is not
-/// what decides this, matching libpq (`verify-full` is not required to send a
-/// password, and `prefer` does not fall back to clear text without saying so).
+/// 返回的标记表示密码能否在这个信道上传输：握手已完成因而信道加密，或者用户
+/// 允许了明文信道。证书校验是另一重保证，不参与这个判断，与 libpq 一致
+/// （发送密码并不要求 `verify-full`，而 `prefer` 也不会不作声就退回明文）。
 pub async fn open_stream(params: &ConnectParams) -> Result<(pg::Stream, bool), AppError> {
     let host = effective_host(&params.host).to_string();
     let port = params.port;
@@ -108,13 +105,13 @@ pub async fn open_stream(params: &ConnectParams) -> Result<(pg::Stream, bool), A
     match negotiate_tls(socket, &connector, &host).await {
         Ok(stream) => {
             let stream = pg::Stream::new(Box::new(Pinned { inner: stream }));
-            // A completed TLS handshake is enough to carry the password, even
-            // under `require`, where only the chain of trust is skipped.
+            // TLS 握手完成就足以承载密码，即使在 `require` 下也是如此——
+            // 那里只是跳过了信任链校验。
             Ok((stream, true))
         }
         Err(TlsFailure::Refused(reason)) if params.ssl == SslMode::Prefer => {
-            // The server declined encryption (or its certificate did not
-            // verify). `prefer` falls back to plain TCP, as libpq does.
+            // 服务器拒绝了加密（或证书未通过校验）。`prefer` 会像 libpq 一样
+            // 退回明文 TCP。
             let _ = reason;
             let socket = tokio::time::timeout(timeout, tokio::net::TcpStream::connect((host.as_str(), port)))
                 .await
@@ -142,16 +139,15 @@ pub async fn open_stream(params: &ConnectParams) -> Result<(pg::Stream, bool), A
     }
 }
 
-/// Why a TLS attempt did not produce a stream.
+/// TLS 尝试没有产出流的原因。
 enum TlsFailure {
-    /// The server answered `N` to the SSL request (does not speak TLS).
+    /// 服务器对 SSL 请求回了 `N`（不支持 TLS）。
     Refused(Reason),
-    /// TLS started but did not complete, typically a certificate problem.
+    /// TLS 已开始但没有完成，通常是证书问题。
     Failed(Reason),
 }
 
-/// Why a TLS attempt failed: a token the UI translates, or free text from the
-/// I/O stack.
+/// TLS 尝试失败的原因：一个由界面翻译的 token，或来自 I/O 栈的自由文本。
 enum Reason {
     Token(Translated),
     Text(String),
@@ -234,17 +230,17 @@ async fn negotiate_tls(
         .map_err(|err| TlsFailure::Failed(Reason::io(io_cause(&err))))
 }
 
-/// Plain TCP.
+/// 明文 TCP。
 struct Plain {
     inner: tokio::io::BufStream<tokio::net::TcpStream>,
 }
 
-/// TLS.
+/// TLS。
 struct Pinned {
     inner: tokio_rustls::client::TlsStream<tokio::io::BufStream<tokio::net::TcpStream>>,
 }
 
-/// Forwards reads and writes to the real socket.
+/// 把读写转发给真正的 socket。
 macro_rules! delegate_io {
     ($ty:ty) => {
         impl tokio::io::AsyncRead for $ty {
@@ -296,11 +292,10 @@ impl_conn!(Plain);
 impl_conn!(Pinned);
 
 // ---------------------------------------------------------------------------
-// TLS configuration
+// TLS 配置
 
 fn build_tls(mode: SslMode, root_cert: Option<&str>) -> Result<Arc<ClientConfig>, AppError> {
-    // Installing the process-wide provider twice is harmless; subsequent
-    // calls return the already-installed one.
+    // 进程级的 provider 重复安装无害；后续调用会返回已安装的那个。
     let _ = CryptoProvider::install_default(ring::default_provider());
 
     let roots = match root_cert.map(str::trim).filter(|path| !path.is_empty()) {
@@ -323,9 +318,8 @@ fn build_tls(mode: SslMode, root_cert: Option<&str>) -> Result<Arc<ClientConfig>
     .with_no_client_auth();
 
     if mode == SslMode::Require {
-        // Encrypted but not authenticated: libpq's `require`. Signatures are
-        // still verified against the server's certificate; only the chain of
-        // trust is skipped.
+        // 加密但不认证服务器：对应 libpq 的 `require`。签名仍会拿服务器证书
+        // 校验，只是跳过了信任链。
         config
             .dangerous()
             .set_certificate_verifier(Arc::new(AcceptAnyServerCert::new()));
@@ -357,8 +351,7 @@ fn roots_from_file(path: &str) -> Result<RootCertStore, AppError> {
     Ok(store)
 }
 
-/// Encrypts the channel without authenticating the server. Handshake
-/// signatures are still verified, so this is not a no-op verifier.
+/// 加密信道但不认证服务器。握手签名仍会校验，所以这不是一个空操作校验器。
 #[derive(Debug)]
 struct AcceptAnyServerCert {
     provider: Arc<CryptoProvider>,

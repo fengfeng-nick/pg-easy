@@ -3,14 +3,16 @@ import {
   asAppError,
   type AppError,
   type ConnectParams,
+  type DatabaseInfo,
   type DumpOptions,
+  type ImportOutcome,
   type SavedConnection,
 } from "@/lib/ipc";
 import { describeError } from "@/lib/errors";
 import { translateTo, useApp, type Connection } from "@/lib/store";
 
-/** Workspaces opened this launch. Re-saving a password should reconnect with
- *  it rather than keep a stale session around. */
+/** 本次启动中打开的会话。重新保存密码时应该用它重连，而不是留下一个
+ *  已经过期的会话。 */
 export function workspaceFor(params: ConnectParams) {
   return useApp
     .getState()
@@ -69,8 +71,8 @@ export async function openConnection(
     state.pushToast({
       tone: "error",
       retitle: (t) => ({
-        // A generic headline alone gives nothing to act on; the detail carries the
-        // reason (wrong password, server closed, TLS refused).
+        // 只有一句笼统的标题没法采取行动；详细说明才给出原因
+        //（密码错误、服务器关闭、TLS 被拒）。
         title:
           error.kind === "connection" || error.kind === "tls"
             ? t("notices.couldNotReach")
@@ -102,35 +104,86 @@ export async function refreshCatalog(connectionId: string) {
   }
 }
 
+/** 列出这台服务器上的数据库，供侧边栏切换。失败时把错误交给调用方显示。 */
+export async function listDatabases(connectionId: string): Promise<DatabaseInfo[]> {
+  const overview = await api.browse(connectionId);
+  return overview.databases;
+}
+
+/**
+ * 把已打开的会话换到另一个库。会话 id 不变，所以标签页还挂在它上面；
+ * 换过去之后重新读目录，树里显示新库的表。
+ */
+export async function switchDatabase(connectionId: string, database: string): Promise<boolean> {
+  const state = useApp.getState();
+  const current = state.connections.find((connection) => connection.id === connectionId);
+  if (!current || current.database === database) return false;
+
+  // 旧库的表在新库里不存在。先收起打开着的表视图，再换库。
+  if (state.view.kind === "table" && state.view.connectionId === connectionId) {
+    state.setView({ kind: "editor" });
+  }
+  state.updateConnection(connectionId, {
+    database,
+    browsing: true,
+    catalog: null,
+    catalogError: null,
+  });
+  try {
+    const info = await api.switchDatabase(connectionId, database);
+    useApp.getState().updateConnection(connectionId, {
+      database,
+      serverVersion: info.serverVersion,
+      backendPid: info.backendPid,
+      txStatus: info.txStatus,
+    });
+    void refreshCatalog(connectionId);
+    return true;
+  } catch (failure) {
+    const error = asAppError(failure);
+    const { message, detail } = describeError(error);
+    // 登录被拒时后端还留着旧会话，把界面上的库名改回去。
+    // 登录被拒时后端还留着旧会话。库名改回去，再把刚才清掉的目录读回来，
+    // 否则侧边栏会一直空着，连重试的入口都没有。
+    useApp.getState().updateConnection(connectionId, { database: current.database });
+    void refreshCatalog(connectionId);
+    useApp.getState().pushToast({
+      tone: "error",
+      retitle: (t) => ({
+        title: t("sidebar.switchFailed", { database }),
+        detail: [message, detail].filter(Boolean).join("\n"),
+      }),
+      detail: [message, detail].filter(Boolean).join("\n"),
+    });
+    return false;
+  }
+}
+
 export async function closeConnection(connection: Connection) {
   const state = useApp.getState();
   try {
     await api.disconnect(connection.id);
   } catch {
-    // The session may already be gone (server restarted); removing it from the
-    // UI is still correct.
+    // 会话可能已经不在了（服务器重启过）；把它从界面上移除仍然是对的。
   }
   state.removeConnection(connection.id);
 }
 
-/** Ends the workspace that is using this saved connection; the saved entry
- *  itself (and its stored password) stays. */
+/** 结束正在使用这条已保存连接的会话；保存的条目本身（以及保存的密码）
+ *  仍然保留。 */
 export async function disconnectSaved(connection: Connection | null, savedId: string) {
   if (connection) await closeConnection(connection);
-  // A workspace opened by hand before the entry was saved is the same
-  // connection but carries no `savedId`.
+  // 在条目保存之前手动打开的会话是同一条连接，但没有 `savedId`。
   for (const item of useApp.getState().connections) {
     if (item.savedId === savedId) await closeConnection(item);
   }
 }
 
-/** Deletes a saved connection and its stored password. A session that is
- *  already open stays open, detached from the entry that no longer exists.
- *  Resolves to whether the list still holds the entry: a delete that landed
- *  after a stale dialog was opened for the same id would otherwise remove
- *  two servers. */
+/** 删除一条已保存连接及其保存的密码。已经打开的会话保持打开，只是与那个
+ *  不再存在的条目脱钩。返回列表里是否还持有该条目：否则对一个同 id 的
+ *  过期对话框执行删除，会顺带删掉两台服务器。 */
 export async function removeSavedConnection(id: string): Promise<boolean> {
-  // The backend's list (not the store's) is the truth after a second delete.
+  // 第二次删除之后，以后端返回的列表（而不是 store 里的）为准。
   const remaining = await api.deleteConnection(id);
   const state = useApp.getState();
   state.setSavedConnections(remaining);
@@ -146,9 +199,8 @@ export type RunOutcome = {
 };
 
 /**
- * Runs `sql` on a tab's connection and writes the outcome onto the tab.
- * Partial results are preserved when a later statement fails, which is what
- * makes "run script" feel safe.
+ * 在标签页的连接上执行 `sql`，并把结果写回标签页。后面某条语句失败时，
+ * 前面已经拿到的部分结果会保留，这正是“执行脚本”让人放心的原因。
  */
 export async function runSql(tabId: string, sql: string): Promise<RunOutcome> {
   const state = useApp.getState();
@@ -172,8 +224,8 @@ export async function runSql(tabId: string, sql: string): Promise<RunOutcome> {
     return { ok: false };
   }
 
-  // A statement already running on this session is refused by the backend; the
-  // toast explains why instead of silently doing nothing.
+  // 这条会话上已有语句在跑时后端会拒绝；用 toast 说明原因，
+  // 而不是默默什么都不做。
   const otherRunning = state.tabs.some(
     (item) => item.connectionId === tab.connectionId && item.result?.status === "running",
   );
@@ -197,7 +249,7 @@ export async function runSql(tabId: string, sql: string): Promise<RunOutcome> {
   try {
     const result = await api.execute(tab.connectionId, sql);
     const current = useApp.getState().tabs.find((item) => item.id === tabId);
-    // The tab may have been closed while the query ran.
+    // 查询执行期间标签页可能已经被关闭。
     if (!current) return { ok: true };
     useApp.getState().updateTab(tabId, {
       result: {
@@ -220,8 +272,8 @@ export async function runSql(tabId: string, sql: string): Promise<RunOutcome> {
     const current = useApp.getState().tabs.find((item) => item.id === tabId);
     if (!current) return { ok: false, cancelled };
     const connectionId = current.connectionId;
-    // The panel under the grid shows the error; a toast makes sure the user
-    // notices it even when the editor still has the focus.
+    // 表格下面的面板会显示错误；再加一个 toast，保证编辑器仍有焦点时
+    // 用户也能注意到。
     state.pushToast({
       tone: "error",
       retitle: (t) => ({
@@ -243,7 +295,7 @@ export async function runSql(tabId: string, sql: string): Promise<RunOutcome> {
           position: error.position,
           statementIndex: error.statementIndex,
           rows: error.rows ? { ...error.rows, exhausted: true } : undefined,
-          /** Placeholder values, so the error panel can translate the message. */
+          /** 占位值，好让错误面板能翻译这条消息。 */
           args: (error as AppError).args,
           kind: error.kind,
         },
@@ -252,14 +304,14 @@ export async function runSql(tabId: string, sql: string): Promise<RunOutcome> {
         totalDurationMs: error.resultsDurationMs,
       },
     });
-    // A statement that fails or is cancelled can still change the session:
-    // an aborted transaction, an open one, or a dropped socket.
+    // 失败或被取消的语句同样会改变会话状态：事务被中止、事务处于打开
+    // 状态，或者 socket 已经断开。
     if (connectionId) void refreshStatus(connectionId);
     return { ok: false, cancelled };
   }
 }
 
-/** Re-reads a session's transaction state after a statement changed it. */
+/** 语句改变会话状态后，重新读取它的事务状态。 */
 export async function refreshStatus(connectionId: string) {
   try {
     const status = await api.connectionStatus(connectionId);
@@ -273,7 +325,7 @@ export async function refreshStatus(connectionId: string) {
       backendPid: status.backendPid,
     });
   } catch {
-    // A closed session is reported by the next statement instead.
+    // 已关闭的会话由下一条语句来报告。
   }
 }
 
@@ -292,21 +344,20 @@ export async function cancelQuery(connectionId: string) {
   }
 }
 
-/** `schema.table`, the scope spelling the backend matches against. */
+/** `schema.table`，后端用于匹配的作用域写法。 */
 export function tableKey(schema: string, relation: string) {
   return `${schema}.${relation}`;
 }
 
-/** `public."order items"` → `public.order_items`: a file name, dot kept. */
+/** `public."order items"` → `public.order_items`：用作文件名，点保留。 */
 function sanitize(qualified: string) {
   return qualified.replace(/[^A-Za-z0-9_.-]/g, "_").replace(/\.{2,}/g, ".");
 }
 
 /**
- * Writes a dump to a file the user picks. `scope` is null for the whole
- * database; otherwise only those tables (and the structure they need) are
- * exported. Resolves to the path written, or null when the save panel was
- * dismissed or the export failed (a toast says why).
+ * 把转储写到用户选定的文件。`scope` 为 null 表示整个数据库；否则只导出
+ * 这些表（以及它们所需的结构）。返回写入的路径；保存面板被取消或导出
+ * 失败（会有 toast 说明原因）时返回 null。
  */
 export async function exportDump({
   connectionId,
@@ -328,7 +379,7 @@ export async function exportDump({
   const suffix = includeData ? "" : "_schema";
   const extension = format === "zip" ? "zip" : "sql";
   if (scope && scope.length === 1) {
-    // One table names the file after itself; several fall back to the count.
+    // 一个表用表名命名文件；多个表则退回用数量。
     name = sanitize(scope[0]);
   } else if (scope) {
     name = `${sanitize(database)}_${scope.length}_tables`;
@@ -338,8 +389,7 @@ export async function exportDump({
   const exportId = `export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   let unlisten: (() => void) | null = null;
   try {
-    // The dialog shows the count while tables stream; the call resolves only
-    // once every table has been read.
+    // 各表流式导出期间对话框显示计数；调用要等所有表都读完才返回。
     unlisten = await api.onDumpProgress((progress) => {
       if (progress.exportId !== exportId) return;
       state.updateConnection(connectionId, {
@@ -401,4 +451,66 @@ export async function exportDump({
 export async function disconnectAll() {
   const state = useApp.getState();
   await Promise.allSettled(state.connections.map((connection) => api.disconnect(connection.id)));
+}
+
+/** 导入的结局：成功时带统计，失败时带可展示的错误。 */
+export type ImportRun = {
+  outcome?: ImportOutcome;
+  error?: {
+    kind: AppError["kind"];
+    message: string;
+    detail?: string;
+    /** 出错语句在文件中的序号（从 0 开始）。 */
+    statementIndex?: number;
+  };
+  /** 用户按了停止。 */
+  cancelled?: boolean;
+};
+
+/**
+ * 把 `path` 指向的 .sql 文件回放到连接里。
+ *
+ * 进度通过 `onProgress` 回调逐批上报。成功后刷新目录：导入的多半是新表。
+ * 失败时把结构化错误交回对话框，由它展示是第几条语句出的问题。
+ */
+export async function importSqlFile({
+  connectionId,
+  path,
+  inTransaction,
+  onProgress,
+}: {
+  connectionId: string;
+  path: string;
+  inTransaction: boolean;
+  onProgress?: (progress: { statements: number; total: number; rows: number }) => void;
+}): Promise<ImportRun> {
+  const importId = `import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const unlisten = await api.onImportProgress((progress) => {
+    if (progress.importId !== importId) return;
+    onProgress?.({
+      statements: progress.statements,
+      total: progress.total,
+      rows: progress.rows,
+    });
+  });
+  try {
+    const outcome = await api.importSql(connectionId, importId, path, { inTransaction });
+    // 新表、新列都要出现在侧边栏里。
+    void refreshCatalog(connectionId);
+    return { outcome };
+  } catch (failure) {
+    const error = asAppError(failure);
+    const { message, detail } = describeError(error);
+    return {
+      cancelled: error.kind === "cancelled",
+      error: {
+        kind: error.kind,
+        message,
+        detail,
+        statementIndex: error.statementIndex,
+      },
+    };
+  } finally {
+    unlisten();
+  }
 }
