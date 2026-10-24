@@ -16,6 +16,8 @@
   --text-sm: 12px;
   --text-md: 13px;
   --text-lg: 15px;
+  /* 设置页和 ⌘+/- 改这个比例，界面、结果表、编辑器一起缩放。 */
+  --font-scale: 1;
 
   --radius-sm: 5px;
   --radius-md: 8px;

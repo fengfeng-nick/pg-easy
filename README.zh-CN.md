@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="brand/icon-1024.png" width="112" alt="pg easy" />
+<img src="assets/icon-1024.png" width="112" alt="pg easy" />
 
 # pg easy
 

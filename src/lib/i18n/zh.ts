@@ -122,6 +122,8 @@ export const zh: Messages = {
     languageHint: "界面语言。数据库中的内容不会被翻译。",
     theme: "主题",
     themeHint: "跟随系统设置，或固定使用某个主题。",
+    fontSize: "字体大小",
+    fontSizeHint: "同时缩放界面、结果表和编辑器。也可以用 {plus} / {minus}。",
     system: "系统",
     light: "浅色",
     dark: "深色",
@@ -236,6 +238,7 @@ export const zh: Messages = {
     thatIsAllRows: "已经是全部行了",
     couldNotLoadMore: "无法加载更多行",
     rowOf: "第 {row} 行 · {column}",
+    elapsed: "耗时 {duration}",
   },
 
   grid: {

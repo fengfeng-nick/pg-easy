@@ -4,7 +4,7 @@ import { Check, ChevronDown, ChevronUp, Copy, Maximize2 } from "lucide-react";
 import type { Column } from "@/lib/ipc";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n";
-import { formatCount, mod } from "@/lib/platform";
+import { formatCount, formatDuration, mod } from "@/lib/platform";
 import { CellValue } from "@/components/results/value";
 import { CellDetail } from "@/components/results/CellDetail";
 
@@ -48,6 +48,8 @@ type Props = {
   /** 就地排序只会重排已加载的行；分页表的所有页并不都在内存里，
    *  因此对它关闭排序。 */
   sortable?: boolean;
+  /** 这次查询的耗时，显示在结果栏。 */
+  durationMs?: number;
 };
 
 export function ResultGrid({
@@ -60,6 +62,7 @@ export function ResultGrid({
   showRowNumbers = true,
   truncated = false,
   sortable = true,
+  durationMs,
 }: Props) {
   const t = useT();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -333,6 +336,11 @@ export function ResultGrid({
                 column: columns[selected.col]?.name ?? "",
               })}
             </span>
+            {durationMs != null && (
+              <span className="tabular text-ink-faint">
+                {t("results.elapsed", { duration: formatDuration(durationMs) })}
+              </span>
+            )}
             <span className="min-w-0 flex-1 truncate font-mono text-ink-soft">
               {sortedRows[selected.row]?.[selected.col] === null
                 ? t("common.null")
@@ -358,6 +366,14 @@ export function ResultGrid({
             <span className="tabular">
               {t("common.rows", { count: formatCount(sortedRows.length) })}
             </span>
+            {durationMs != null && (
+              <>
+                <span className="text-ink-faint">·</span>
+                <span className="tabular">
+                  {t("results.elapsed", { duration: formatDuration(durationMs) })}
+                </span>
+              </>
+            )}
             <span className="text-ink-faint">|</span>
             <span title={t("common.copyShortcutTip", { shortcut: mod })}>{t("grid.clickToInspect")}</span>
           </span>

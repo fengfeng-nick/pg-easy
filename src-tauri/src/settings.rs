@@ -13,6 +13,8 @@ pub struct Settings {
     /// 界面语言（`"en"` 或 `"zh"`）。`None` 跟随系统语言，直到用户自己选；
     /// 界面也按同样方式对待未知值。
     pub language: Option<String>,
+    /// 界面字号，相对默认 13px 的百分比。`100` 是默认；范围由前端钳制。
+    pub font_scale: u32,
 }
 
 impl Default for Settings {
@@ -23,6 +25,7 @@ impl Default for Settings {
             connect_timeout_ms: 10_000,
             app_name: "pg easy".into(),
             language: None,
+            font_scale: 100,
         }
     }
 }

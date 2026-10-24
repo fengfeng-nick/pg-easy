@@ -160,6 +160,8 @@ export type Settings = {
   appName: string;
   /** 为 `null` 时跟随系统语言，直到用户自己选一个。 */
   language: Language | null;
+  /** 界面字号，相对默认的百分比。缺省或旧配置按 100 处理。 */
+  fontScale?: number;
 };
 
 /** 每个命令都会返回的结构化错误。 */

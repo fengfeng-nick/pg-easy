@@ -1,8 +1,9 @@
+import { useEffect, useState } from "react";
 import { Circle } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n";
-import { formatCount, shortcut } from "@/lib/platform";
-import { useApp } from "@/lib/store";
+import { formatCount, formatDuration, shortcut } from "@/lib/platform";
+import { useApp, type ResultState } from "@/lib/store";
 
 export function StatusBar({ onOpenPalette }: { onOpenPalette: () => void }) {
   const connection = useApp((state) => {
@@ -46,6 +47,8 @@ export function StatusBar({ onOpenPalette }: { onOpenPalette: () => void }) {
         <span className="tabular text-ink-faint">{t("common.rows", { count: formatCount(rows) })}</span>
       )}
 
+      {result && <QueryElapsed result={result} />}
+
       <div className="ml-auto flex items-center gap-3">
         {connection && (
           <span
@@ -71,5 +74,29 @@ export function StatusBar({ onOpenPalette }: { onOpenPalette: () => void }) {
         </button>
       </div>
     </footer>
+  );
+}
+
+function QueryElapsed({ result }: { result: ResultState }) {
+  const t = useT();
+  const running = result.status === "running";
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!running) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 100);
+    return () => window.clearInterval(timer);
+  }, [running, result.startedAt]);
+
+  const elapsed =
+    result.totalDurationMs ??
+    (result.finishedAt != null
+      ? result.finishedAt - result.startedAt
+      : now - result.startedAt);
+
+  return (
+    <span className="tabular text-ink-faint">
+      {t("results.elapsed", { duration: formatDuration(elapsed) })}
+    </span>
   );
 }

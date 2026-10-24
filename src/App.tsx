@@ -7,7 +7,7 @@ import { useApp } from "@/lib/store";
 import { ConnectionDialog } from "@/components/connection/ConnectionDialog";
 import { TitleBar } from "@/components/layout/TitleBar";
 import { StatusBar } from "@/components/layout/StatusBar";
-import { SettingsView } from "@/components/settings/SettingsView";
+import { applyFontScale, SettingsView, stepFontScale } from "@/components/settings/SettingsView";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { Toasts } from "@/components/ui/Toasts";
 import { Welcome } from "@/components/welcome/Welcome";
@@ -32,6 +32,7 @@ export default function App() {
   useBootstrap();
   useTheme();
   useDocumentLanguage();
+  useFontScale();
   useGlobalShortcuts({
     onNewConnection: () => setDialog({ open: true, initial: null }),
   });
@@ -219,10 +220,16 @@ function useGlobalShortcuts({ onNewConnection }: { onNewConnection: () => void }
         }
       }
 
-      if (primary && (event.key === "=" || event.key === "-" || event.key === "0")) {
-        // 编辑器字体缩放尚未实现，这里刻意吞掉浏览器的缩放行为，
-        // 以免布局被破坏。
+      if (primary && (event.key === "=" || event.key === "-" || event.key === "0") && !inDialog) {
         event.preventDefault();
+        const current = state.settings;
+        if (!current) return;
+        const delta = event.key === "0" ? 0 : event.key === "-" ? -1 : 1;
+        const fontScale = stepFontScale(current.fontScale ?? 100, delta);
+        if (fontScale === (current.fontScale ?? 100)) return;
+        applyFontScale(fontScale);
+        state.setSettings({ ...current, fontScale });
+        void api.saveSettings({ ...current, fontScale }).catch(() => undefined);
       }
 
       if (primary && event.key.toLowerCase() === "o" && !inDialog) {
@@ -236,6 +243,13 @@ function useGlobalShortcuts({ onNewConnection }: { onNewConnection: () => void }
 }
 
 /** 让文档语言（拼写检查、字形排版）与界面语言保持同步。 */
+function useFontScale() {
+  const scale = useApp((state) => state.settings?.fontScale ?? 100);
+  useEffect(() => {
+    applyFontScale(scale);
+  }, [scale]);
+}
+
 function useDocumentLanguage() {
   const language = useApp((state) => state.language);
   useEffect(() => {

@@ -33,6 +33,10 @@ export function ResultsPane({ tab }: { tab: Tab }) {
   if (!result) return <EmptyResults connection={connection ?? null} />;
   if (result.status === "running") return <RunningState startedAt={result.startedAt} />;
 
+  const elapsedMs =
+    result.totalDurationMs ??
+    (result.finishedAt != null ? result.finishedAt - result.startedAt : null);
+
   const activeIndex = Math.min(
     Math.max(tab.activeResult, 0),
     Math.max(result.results.length - 1, 0),
@@ -113,14 +117,13 @@ export function ResultsPane({ tab }: { tab: Tab }) {
               })}
             </div>
           )}
-          <div className="ml-auto flex shrink-0 items-center pr-2 text-[11px] text-ink-muted">
-            <span className="tabular">
-              {formatDuration(
-                result.totalDurationMs ??
-                  (result.finishedAt ?? Date.now()) - result.startedAt,
-              )}
-            </span>
-          </div>
+          {elapsedMs != null && (
+            <div className="ml-auto flex shrink-0 items-center pr-2 text-[11px] text-ink-muted">
+              <span className="tabular">
+                {t("results.elapsed", { duration: formatDuration(elapsedMs) })}
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -157,6 +160,7 @@ export function ResultsPane({ tab }: { tab: Tab }) {
                 loadingMore={loadingMore}
                 loadedCount={pageSize}
                 onLoadMore={loadMore}
+                durationMs={elapsedMs ?? active.durationMs}
               />
             </div>
           </>
@@ -199,6 +203,7 @@ function ResultTab({
     >
       <span className="text-ink-faint tabular">{index + 1}</span>
       <span className="tabular">{label}</span>
+      <span className="tabular text-ink-faint">{formatDuration(statement.durationMs)}</span>
       {active && <span className="absolute inset-x-1.5 bottom-0 h-[2px] rounded-t bg-accent" />}
     </button>
   );

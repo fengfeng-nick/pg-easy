@@ -8,10 +8,21 @@ import type { Extension } from "@codemirror/state";
  * Theme）构建 CSS 基主题，切换主题时就不必重建 compartment，
  * CodeMirror 的外观也能与窗口其余部分保持一致。
  */
-const baseTheme = EditorView.theme({
+/** CodeMirror 在创建时把字号编译成像素，改 CSS 变量不会重算，
+ *  所以按当前比例生成主题，字号变化时由编辑器重建。 */
+function px(value: number): string {
+  const scale = Number.parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue("--font-scale"),
+  );
+  const factor = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  return `${Math.round(value * factor * 10) / 10}px`;
+}
+
+function baseTheme(): Extension {
+  return EditorView.theme({
   "&": {
     height: "100%",
-    fontSize: "13px",
+    fontSize: px(13),
     backgroundColor: "var(--surface)",
     color: "var(--ink)",
   },
@@ -31,7 +42,7 @@ const baseTheme = EditorView.theme({
   },
   ".cm-lineNumbers .cm-gutterElement": {
     padding: "0 8px 0 12px",
-    fontSize: "11.5px",
+    fontSize: px(11.5),
     fontVariantNumeric: "tabular-nums",
   },
   ".cm-activeLineGutter": {
@@ -59,7 +70,7 @@ const baseTheme = EditorView.theme({
   ".cm-search": {
     padding: "6px 10px",
     borderBottom: "1px solid var(--line)",
-    fontSize: "12px",
+    fontSize: px(12),
   },
   ".cm-search input, .cm-search button": {
     height: "24px",
@@ -67,9 +78,9 @@ const baseTheme = EditorView.theme({
     border: "1px solid var(--line-strong)",
     backgroundColor: "var(--raised)",
     color: "var(--ink)",
-    fontSize: "12px",
+    fontSize: px(12),
   },
-  ".cm-search label": { fontSize: "11.5px", color: "var(--ink-soft)" },
+  ".cm-search label": { fontSize: px(11.5), color: "var(--ink-soft)" },
   ".cm-searchMatch": {
     backgroundColor: "color-mix(in oklab, var(--warn) 28%, transparent)",
     borderRadius: "2px",
@@ -87,10 +98,12 @@ const baseTheme = EditorView.theme({
     borderRadius: "8px",
     boxShadow: "var(--shadow-md)",
     overflow: "hidden",
+    // 补全列表挂在编辑器内部，默认 z-index 会被结果区分隔条盖住。
+    zIndex: "40",
   },
   ".cm-tooltip-autocomplete > ul": {
     fontFamily: "var(--font-mono)",
-    fontSize: "12px",
+    fontSize: px(12),
     maxHeight: "260px",
   },
   ".cm-tooltip-autocomplete > ul > li": {
@@ -102,7 +115,8 @@ const baseTheme = EditorView.theme({
     color: "var(--accent-ink)",
   },
   ".cm-completionIcon": { opacity: "0.45", paddingRight: "6px" },
-});
+  });
+}
 
 const highlight = HighlightStyle.define([
   { tag: [t.keyword, t.operatorKeyword, t.controlKeyword], color: "var(--accent-ink)", fontWeight: "600" },
@@ -118,4 +132,6 @@ const highlight = HighlightStyle.define([
   { tag: t.invalid, color: "var(--danger-ink)" },
 ]);
 
-export const editorTheme: Extension = [baseTheme, syntaxHighlighting(highlight)];
+export function editorTheme(): Extension {
+  return [baseTheme(), syntaxHighlighting(highlight)];
+}

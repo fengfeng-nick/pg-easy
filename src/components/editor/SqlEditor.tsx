@@ -12,6 +12,7 @@ import {
   lineNumbers,
   placeholder,
   rectangularSelection,
+  tooltips,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, foldGutter, foldKeymap, indentOnInput } from "@codemirror/language";
@@ -64,8 +65,22 @@ function buildLanguage(data: CompletionData | null): Extension {
   };
   if (data) {
     config.schema = data.namespace();
-    config.defaultSchema = data.catalog?.schemas[0]?.name;
-    return [sql(config), autocompletion({ override: [data.completionSource as CompletionSource] })];
+    // 连上库之后，未限定的表名按 public 补，而不是目录里碰巧排第一的 schema。
+    config.defaultSchema = data.catalog?.schemas.some((item) => item.name === "public")
+      ? "public"
+      : data.catalog?.schemas[0]?.name;
+    // 追加而不是 override：override 会关掉 lang-sql 自带的关键词、
+    // 内置函数、表和列补全。挂到 SQL 语言数据上，字符串和注释里不触发。
+    const support = sql(config);
+    return [
+      support,
+      support.language.data.of({
+        autocomplete: data.completionSource as CompletionSource,
+      }),
+      support.language.data.of({
+        autocomplete: data.identifierSource as CompletionSource,
+      }),
+    ];
   }
   return sql(config);
 }
@@ -86,6 +101,8 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(
   const language = useRef(new Compartment());
   const placeholderSlot = useRef(new Compartment());
   const uiLanguage = useApp((state) => state.language);
+  const fontScale = useApp((state) => state.settings?.fontScale ?? 100);
+  const themeSlot = useRef(new Compartment());
   const handlers = useRef({ completion, onSelectionChange, onDocChange });
   handlers.current = { completion, onSelectionChange, onDocChange };
 
@@ -111,7 +128,10 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(
         crosshairCursor(),
         highlightActiveLine(),
         highlightSelectionMatches(),
-        autocompletion({ activateOnTyping: true, icons: false, maxRenderedOptions: 60 }),
+        // 提示框默认挂到 document.body，主题（cm-dark）和样式都加不上，
+        // 列表会变成黑底黑字。挂回编辑器节点，主题和 z-index 才生效。
+        tooltips({ parent: hostRef.current, position: "absolute" }),
+        autocompletion({ activateOnTyping: true, icons: false, maxRenderedOptions: 80 }),
         language.current.of(initialLanguage),
         keymap.of([
           ...closeBracketsKeymap,
@@ -123,7 +143,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(
           indentWithTab,
         ]),
         placeholderSlot.current.of(placeholderText(uiLanguage)),
-        editorTheme,
+        themeSlot.current.of(editorTheme()),
         EditorState.readOnly.of(Boolean(readOnly)),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) handlers.current.onDocChange?.(update.state.doc.toString());
@@ -155,6 +175,13 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(
       effects: placeholderSlot.current.reconfigure(placeholderText(uiLanguage)),
     });
   }, [uiLanguage]);
+
+  // 字号变了要重建主题：CodeMirror 创建时就把像素写死了。
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: themeSlot.current.reconfigure(editorTheme()),
+    });
+  }, [fontScale]);
 
   // 重新配置语言只替换补全用的 schema，不影响文档、撤销历史和选区。
   useEffect(() => {
@@ -219,5 +246,5 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(
     [],
   );
 
-  return <div ref={hostRef} className="h-full min-h-0 overflow-hidden" />;
+  return <div ref={hostRef} className="relative h-full min-h-0 overflow-hidden" />;
 });

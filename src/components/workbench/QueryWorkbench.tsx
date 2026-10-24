@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlignLeft,
   ChevronDown,
@@ -128,14 +128,24 @@ function TabEditor({ tab }: { tab: Tab }) {
 const completionByConnection = new Map<string, { catalog: unknown; data: CompletionData }>();
 
 function useCompletion(connection: Connection | undefined) {
-  return useMemo(() => {
+  const [revision, setRevision] = useState(0);
+  const data = useMemo(() => {
     if (!connection) return null;
     const cached = completionByConnection.get(connection.id);
     if (cached && cached.catalog === connection.catalog) return cached.data;
-    const data = new CompletionData(connection.catalog, connection.id);
-    completionByConnection.set(connection.id, { catalog: connection.catalog, data });
-    return data;
+    const next = new CompletionData(connection.catalog, connection.id);
+    completionByConnection.set(connection.id, { catalog: connection.catalog, data: next });
+    return next;
   }, [connection]);
+
+  // 列是懒加载的。第一次敲 `users.` 时列还没到，加载完成后要重建
+  // schema 命名空间，下一次（或还开着的）补全才能列出列。
+  useEffect(() => {
+    if (!data) return;
+    return data.subscribe(() => setRevision((value) => value + 1));
+  }, [data]);
+
+  return useMemo(() => data, [data, revision]);
 }
 
 function QueryToolbar({ tab, onRequestConnect }: { tab: Tab; onRequestConnect: () => void }) {

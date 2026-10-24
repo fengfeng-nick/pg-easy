@@ -62,6 +62,7 @@
   body {
     font-family: var(--font-ui);
     font-size: var(--text-md);
+    zoom: var(--font-scale);
     line-height: 1.45;
     font-feature-settings: "cv05" 1, "ss01" 1;
     color: var(--ink);

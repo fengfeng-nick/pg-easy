@@ -122,6 +122,8 @@ export const en = {
     languageHint: "Language of the interface. Database contents are never translated.",
     theme: "Theme",
     themeHint: "Follow the system setting or pin a theme.",
+    fontSize: "Font size",
+    fontSizeHint: "Scales the interface, results, and the editor. {plus} / {minus} also works.",
     system: "System",
     light: "Light",
     dark: "Dark",
@@ -238,6 +240,7 @@ export const en = {
     thatIsAllRows: "That's all the rows",
     couldNotLoadMore: "Could not load more rows",
     rowOf: "row {row} · {column}",
+    elapsed: "{duration}",
   },
 
   grid: {

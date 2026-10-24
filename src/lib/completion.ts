@@ -1,4 +1,4 @@
-import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
+import type { Completion, CompletionContext, CompletionResult } from "@codemirror/autocomplete";
 import type { SQLNamespace } from "@codemirror/lang-sql";
 import { api, type Catalog } from "@/lib/ipc";
 
@@ -81,8 +81,9 @@ export class CompletionData {
    */
   completionSource = (context: CompletionContext): CompletionResult | null => {
     if (!this.catalog) return null;
-    const line = context.state.doc.lineAt(context.pos);
-    const before = line.text.slice(0, context.pos - line.from);
+    const doc = context.state.doc.toString();
+    // 别名和 FROM 往往不在同一行，预热和解析都看光标之前的全文。
+    const before = doc.slice(0, context.pos);
 
     for (const match of before.matchAll(
       /(?:from|join|update|into)\s+"?([\w$]+)"?(?:\s*\.\s*"?([\w$]+)"?)?/gi,
@@ -99,26 +100,26 @@ export class CompletionData {
     if (!dotted) return null;
     const qualifier = dotted[1].replace(/"/g, "");
     const from = context.pos - dotted[2].length;
+    // 别名可能写在光标后面（`select u.\nfrom users u`），所以用全文。
+    const aliases = aliasMap(doc);
 
     if (this.catalog.relations[qualifier]) {
+      const relations = this.catalog.relations[qualifier]
+        .filter((relation) => relation.kind !== "sequence")
+        .map((relation) => ({ label: relation.name, type: "type" }));
+      const routines = (this.catalog.routines[qualifier] ?? []).map((routine) => ({
+        label: routine.name,
+        type: "function",
+        detail: routine.arguments,
+      }));
       return {
         from,
-        options: this.catalog.relations[qualifier]
-          .filter((relation) => relation.kind !== "sequence")
-          .map((relation) => ({ label: relation.name, type: "type" })),
+        options: [...relations, ...routines],
         validFor: /^[\w$]*$/,
       };
     }
 
-    const doc = context.state.doc.toString();
-    const escaped = qualifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const aliasMatch = doc.match(
-      new RegExp(
-        `(?:from|join|update|into)\\s+"?([\\w$]+)"?\\s+(?:as\\s+)?"?${escaped}"?(?![\\w$])`,
-        "i",
-      ),
-    );
-    const target = this.findRelation(undefined, aliasMatch?.[1] ?? qualifier);
+    const target = this.findRelation(undefined, aliases.get(qualifier.toLowerCase()) ?? qualifier);
     if (!target) return null;
 
     const columns = this.columns.get(this.key(target.schema, target.relation)) ?? [];
@@ -130,4 +131,63 @@ export class CompletionData {
       validFor: /^[\w$]*$/,
     };
   };
+
+  /**
+   * 补 schema 名、函数名和过程名。表和列交给 lang-sql 的 schema 补全，
+   * 这里只补它没有的那一层，避免同一项出现两次。
+   */
+  identifierSource = (context: CompletionContext): CompletionResult | null => {
+    if (!this.catalog) return null;
+    const word = context.matchBefore(/[\w$]+/);
+    if (!word) return null;
+    if (word.from === word.to && !context.explicit) return null;
+
+    const line = context.state.doc.lineAt(context.pos);
+    const before = line.text.slice(0, word.from - line.from);
+    // `qualifier.` 由 completionSource 负责，这里不再插一脚。
+    if (/[\w$"]\s*\.\s*$/.test(before)) return null;
+
+    const options: Completion[] = [];
+    const seen = new Set<string>();
+    const push = (option: Completion) => {
+      const key = `${option.type}:${option.label}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      options.push(option);
+    };
+
+    for (const schema of this.catalog.schemas) {
+      push({ label: schema.name, type: "namespace" });
+    }
+    for (const routines of Object.values(this.catalog.routines)) {
+      for (const routine of routines) {
+        push({
+          label: routine.name,
+          type: "function",
+          detail: routine.arguments || undefined,
+          boost: -1,
+        });
+      }
+    }
+    if (options.length === 0) return null;
+    return { from: word.from, options, validFor: /^[\w$]*$/ };
+  };
+}
+
+/** `别名 → 表名`。FROM/JOIN 后面的限定名只取表那一段。 */
+function aliasMap(doc: string) {
+  const aliases = new Map<string, string>();
+  const pattern =
+    /(?:from|join|update|into)\s+(?:only\s+)?(?:"?[\w$]+"?\s*\.\s*)?"?([\w$]+)"?\s+(?:as\s+)?"?([\w$]+)"?/gi;
+  const reserved = new Set([
+    "where", "join", "inner", "left", "right", "full", "cross", "on", "using",
+    "group", "order", "limit", "offset", "union", "set", "returning", "window",
+  ]);
+  for (const match of doc.matchAll(pattern)) {
+    const table = match[1];
+    const alias = match[2];
+    if (reserved.has(alias.toLowerCase())) continue;
+    aliases.set(alias.toLowerCase(), table);
+  }
+  return aliases;
 }

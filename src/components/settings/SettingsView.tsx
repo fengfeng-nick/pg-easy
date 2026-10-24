@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import { api, type Settings } from "@/lib/ipc";
 import { describeError } from "@/lib/errors";
 import { LANGUAGES, useT, type Language } from "@/lib/i18n";
+import { isMac } from "@/lib/platform";
 import { useApp, type ThemeChoice } from "@/lib/store";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Segmented } from "@/components/ui/Field";
@@ -38,7 +39,9 @@ export function SettingsView() {
         maxRows: clamp(current.maxRows, 100, 2_000_000),
         connectTimeoutMs: clamp(current.connectTimeoutMs, 500, 120_000),
         appName: current.appName.trim() || "pg easy",
+        fontScale: nearestFontScale(current.fontScale ?? 100),
       };
+      applyFontScale(normalized.fontScale ?? 100);
       await api.saveSettings(normalized);
       setSettings(normalized);
       setForm(normalized);
@@ -96,6 +99,31 @@ export function SettingsView() {
                 { value: "light", label: t("settings.light") },
                 { value: "dark", label: t("settings.dark") },
               ]}
+            />
+          </div>
+          <div className="mt-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[12.5px] font-medium text-ink">{t("settings.fontSize")}</p>
+              <p className="mt-0.5 text-[11.5px] text-ink-muted">
+                {t("settings.fontSizeHint", {
+                  plus: isMac ? "⌘+" : "Ctrl++",
+                  minus: isMac ? "⌘-" : "Ctrl+-",
+                })}
+              </p>
+            </div>
+            <Segmented<string>
+              value={String(nearestFontScale(current.fontScale ?? 100))}
+              onChange={(next) => {
+                const fontScale = Number(next);
+                applyFontScale(fontScale);
+                update("fontScale", fontScale);
+                setSettings({ ...current, fontScale });
+                void api.saveSettings({ ...current, fontScale }).catch(() => undefined);
+              }}
+              options={FONT_SCALES.map((scale) => ({
+                value: String(scale),
+                label: `${scale}%`,
+              }))}
             />
           </div>
         </Section>
@@ -199,7 +227,29 @@ const empty: Settings = {
   connectTimeoutMs: 10_000,
   appName: "pg easy",
   language: null,
+  fontScale: 100,
 };
+
+export const FONT_SCALES = [80, 90, 100, 110, 125, 150];
+
+export function nearestFontScale(scale: number): number {
+  return FONT_SCALES.reduce((best, item) =>
+    Math.abs(item - scale) < Math.abs(best - scale) ? item : best,
+  );
+}
+
+export function applyFontScale(scale: number) {
+  const clamped = nearestFontScale(scale);
+  document.documentElement.style.setProperty("--font-scale", String(clamped / 100));
+}
+
+/** ⌘+/-/0 用的步进。到头就停在边界。 */
+export function stepFontScale(current: number, delta: -1 | 1 | 0): number {
+  if (delta === 0) return 100;
+  const index = FONT_SCALES.indexOf(nearestFontScale(current));
+  const next = Math.min(FONT_SCALES.length - 1, Math.max(0, index + delta));
+  return FONT_SCALES[next];
+}
 
 function clamp(value: number, min: number, max: number) {
   if (!Number.isFinite(value)) return min;

@@ -183,6 +183,7 @@ export function TableView({ view }: { view: Extract<View, { kind: "table" }> }) 
             onLoadMore={async () => {
               const rows = data.rows ?? [];
               const offset = rows.length;
+              const startedAt = Date.now();
               setLoadingMore(true);
               try {
                 const page = await api.execute(
@@ -193,6 +194,7 @@ export function TableView({ view }: { view: Extract<View, { kind: "table" }> }) 
                 setData({
                   ...data,
                   rows: [...rows, ...(next?.rows ?? [])],
+                  durationMs: data.durationMs + (Date.now() - startedAt),
                 });
               } catch (failure) {
                 pushToast({
