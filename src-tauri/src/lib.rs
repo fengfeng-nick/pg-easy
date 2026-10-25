@@ -51,6 +51,8 @@ pub fn run() {
             commands::browse,
             commands::load_catalog,
             commands::load_columns,
+            commands::load_structure,
+            commands::load_ddl,
             commands::export_sql,
             commands::pick_sql_file,
             commands::import_sql,

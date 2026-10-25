@@ -246,6 +246,17 @@ pub struct RelationInfo {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ForeignKeyInfo {
+    /// 本表上的列，按约束里的顺序。
+    pub columns: Vec<String>,
+    pub foreign_schema: String,
+    pub foreign_table: String,
+    /// 与 `columns` 一一对应的被引用列。
+    pub foreign_columns: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ColumnInfo {
     pub name: String,
     pub data_type: String,
@@ -253,6 +264,55 @@ pub struct ColumnInfo {
     pub is_primary_key: bool,
     pub default_value: Option<String>,
     pub position: i32,
+    /// 这一列参与的外键。补全 JOIN 条件时用；表数据视图忽略它。
+    #[serde(default)]
+    pub foreign_keys: Vec<ForeignKeyInfo>,
+}
+
+/// 一张表上的索引。`definition` 是 `pg_get_indexdef` 的原文，界面直接展示。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexInfo {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub is_unique: bool,
+    pub is_primary: bool,
+    pub method: String,
+    pub definition: String,
+}
+
+/// 以这张表为子表的外键约束。被别的表引用的关系不在这里。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForeignKeyConstraint {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub foreign_schema: String,
+    pub foreign_table: String,
+    pub foreign_columns: Vec<String>,
+    pub on_update: String,
+    pub on_delete: String,
+}
+
+/// 挂在这张表上的触发器。`definition` 是 `pg_get_triggerdef` 的原文。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TriggerInfo {
+    pub name: String,
+    pub timing: String,
+    pub events: String,
+    pub definition: String,
+    pub enabled: bool,
+}
+
+/// 打开「列」时一次取回的结构：列、索引、外键、触发器。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelationStructure {
+    pub columns: Vec<ColumnInfo>,
+    pub indexes: Vec<IndexInfo>,
+    pub foreign_keys: Vec<ForeignKeyConstraint>,
+    pub triggers: Vec<TriggerInfo>,
 }
 
 #[derive(Debug, Clone, Serialize)]

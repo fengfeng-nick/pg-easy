@@ -9,9 +9,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import { format as formatSql } from "sql-formatter";
-import { CompletionData } from "@/lib/completion";
+import { PgCompletion } from "@/lib/pgComplete";
 import { cancelQuery } from "@/lib/actions";
 import { runSql } from "@/lib/actions";
+import { explainSql } from "@/lib/sql";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n";
 import { isMac, shortcut } from "@/lib/platform";
@@ -125,7 +126,7 @@ function TabEditor({ tab }: { tab: Tab }) {
 
 /** 补全数据在同一条连接的各标签页之间共享，只在目录（或连接）变化时
  *  重建。 */
-const completionByConnection = new Map<string, { catalog: unknown; data: CompletionData }>();
+const completionByConnection = new Map<string, { catalog: unknown; data: PgCompletion }>();
 
 function useCompletion(connection: Connection | undefined) {
   const [revision, setRevision] = useState(0);
@@ -133,13 +134,13 @@ function useCompletion(connection: Connection | undefined) {
     if (!connection) return null;
     const cached = completionByConnection.get(connection.id);
     if (cached && cached.catalog === connection.catalog) return cached.data;
-    const next = new CompletionData(connection.catalog, connection.id);
+    const next = new PgCompletion(connection.catalog, connection.id);
     completionByConnection.set(connection.id, { catalog: connection.catalog, data: next });
     return next;
   }, [connection]);
 
-  // 列是懒加载的。第一次敲 `users.` 时列还没到，加载完成后要重建
-  // schema 命名空间，下一次（或还开着的）补全才能列出列。
+  // 列是懒加载的。第一次敲 `users.` 时列还没到，加载完成后补全源
+  // 再问一次就能列出列。编辑器读的是同一份实例，所以这里只需要触发重渲染。
   useEffect(() => {
     if (!data) return;
     return data.subscribe(() => setRevision((value) => value + 1));
@@ -176,6 +177,21 @@ function QueryToolbar({ tab, onRequestConnect }: { tab: Tab; onRequestConnect: (
         });
         return;
       }
+    }
+    void runSql(tab.id, sql);
+  };
+
+  const explain = () => {
+    const current = useApp.getState().tabs.find((item) => item.id === tab.id);
+    if (!current) return;
+    const source = current.selection?.trim() ? current.selection : current.sql;
+    const sql = explainSql(source ?? "");
+    if (!sql) {
+      useApp.getState().pushToast({
+        tone: "info",
+        retitle: (translate) => ({ title: translate("notices.nothingToRun") }),
+      });
+      return;
     }
     void runSql(tab.id, sql);
   };
@@ -246,6 +262,15 @@ function QueryToolbar({ tab, onRequestConnect }: { tab: Tab; onRequestConnect: (
       <IconButton label={t("workbench.format")} size="sm" onClick={format} disabled={running}>
         <AlignLeft />
       </IconButton>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={explain}
+        disabled={running || !tab.connectionId}
+        title={t("workbench.explainTitle")}
+      >
+        {t("workbench.explain")}
+      </Button>
 
       <span className="mx-1 h-4 w-px bg-line" />
 

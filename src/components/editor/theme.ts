@@ -107,6 +107,8 @@ function baseTheme(): Extension {
     maxHeight: "260px",
   },
   ".cm-tooltip-autocomplete > ul > li": {
+    display: "flex",
+    alignItems: "baseline",
     padding: "3px 10px 3px 8px",
     color: "var(--ink-soft)",
   },
@@ -114,7 +116,26 @@ function baseTheme(): Extension {
     backgroundColor: "var(--accent-wash)",
     color: "var(--accent-ink)",
   },
-  ".cm-completionIcon": { opacity: "0.45", paddingRight: "6px" },
+  ".cm-completionIcon": {
+    width: "14px",
+    opacity: "0.7",
+    paddingRight: "8px",
+    fontSize: px(10),
+    color: "var(--ink-muted)",
+  },
+  ".cm-completionIcon-keyword::after": { content: "'kw'" },
+  ".cm-completionIcon-type::after": { content: "'tbl'" },
+  ".cm-completionIcon-interface::after": { content: "'view'" },
+  ".cm-completionIcon-property::after": { content: "'col'" },
+  ".cm-completionIcon-function::after": { content: "'fn'" },
+  ".cm-completionIcon-namespace::after": { content: "'sch'" },
+  ".cm-completionDetail": {
+    marginLeft: "auto",
+    paddingLeft: "16px",
+    fontStyle: "normal",
+    color: "var(--ink-faint)",
+    fontSize: px(11),
+  },
   });
 }
 

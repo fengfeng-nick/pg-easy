@@ -144,6 +144,47 @@ export type Catalog = {
   fetchedAt: number;
 };
 
+export type ForeignKeyInfo = {
+  columns: string[];
+  foreignSchema: string;
+  foreignTable: string;
+  foreignColumns: string[];
+};
+
+export type IndexInfo = {
+  name: string;
+  columns: string[];
+  isUnique: boolean;
+  isPrimary: boolean;
+  method: string;
+  definition: string;
+};
+
+export type ForeignKeyConstraint = {
+  name: string;
+  columns: string[];
+  foreignSchema: string;
+  foreignTable: string;
+  foreignColumns: string[];
+  onUpdate: string;
+  onDelete: string;
+};
+
+export type TriggerInfo = {
+  name: string;
+  timing: string;
+  events: string;
+  definition: string;
+  enabled: boolean;
+};
+
+export type RelationStructure = {
+  columns: ColumnInfo[];
+  indexes: IndexInfo[];
+  foreignKeys: ForeignKeyConstraint[];
+  triggers: TriggerInfo[];
+};
+
 export type ColumnInfo = {
   name: string;
   dataType: string;
@@ -151,6 +192,8 @@ export type ColumnInfo = {
   isPrimaryKey: boolean;
   defaultValue: string | null;
   position: number;
+  /** 旧缓存或表视图不关心这一项时可能没有。 */
+  foreignKeys?: ForeignKeyInfo[];
 };
 
 export type Settings = {
@@ -311,6 +354,12 @@ export const api = {
   loadCatalog: (id: string) => invoke<Catalog>("load_catalog", { id }),
   loadColumns: (id: string, schema: string, relation: string) =>
     invoke<ColumnInfo[]>("load_columns", { id, schema, relation }),
+  /** 列、索引、外键、触发器。结构面板用这一次，避免打开后再补三次请求。 */
+  loadStructure: (id: string, schema: string, relation: string) =>
+    invoke<RelationStructure>("load_structure", { id, schema, relation }),
+  /** 这个对象的 CREATE 语句。表含约束、非唯一索引和触发器。 */
+  loadDdl: (id: string, schema: string, relation: string) =>
+    invoke<string>("load_ddl", { id, schema, relation }),
 
   /** 省略 `scope` 时是整个数据库，否则是所列的 `schema.table`。 */
   exportSql: (

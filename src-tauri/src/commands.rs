@@ -12,7 +12,7 @@ use crate::error::AppError;
 use crate::import;
 use crate::protocol::{
     BrowseResult, Catalog, ColumnInfo, ConnectionStatus, DumpOptions, ExecResult, ImportOptions,
-    ImportOutcome, Page, PickedSqlFile, SavedConnection, SessionInfo,
+    ImportOutcome, Page, PickedSqlFile, RelationStructure, SavedConnection, SessionInfo,
 };
 use crate::query;
 use crate::settings::Settings;
@@ -466,4 +466,28 @@ pub async fn load_columns(
     let handle = state.handle(&id).await?;
     let mut slot = handle.slot.lock().await;
     catalog::load_columns(&mut slot.session, &schema, &relation).await
+}
+
+#[tauri::command]
+pub async fn load_structure(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+    schema: String,
+    relation: String,
+) -> CmdResult<RelationStructure> {
+    let handle = state.handle(&id).await?;
+    let mut slot = handle.slot.lock().await;
+    catalog::load_structure(&mut slot.session, &schema, &relation).await
+}
+
+#[tauri::command]
+pub async fn load_ddl(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+    schema: String,
+    relation: String,
+) -> CmdResult<String> {
+    let handle = state.handle(&id).await?;
+    let mut slot = handle.slot.lock().await;
+    catalog::load_ddl(&mut slot.session, &schema, &relation).await
 }

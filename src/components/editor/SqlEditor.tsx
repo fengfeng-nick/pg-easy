@@ -21,12 +21,13 @@ import {
   closeBrackets,
   closeBracketsKeymap,
   completionKeymap,
+  startCompletion,
   type CompletionSource,
 } from "@codemirror/autocomplete";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { PostgreSQL, sql, type SQLConfig } from "@codemirror/lang-sql";
+import { PostgreSQL, sql } from "@codemirror/lang-sql";
 import type { Extension } from "@codemirror/state";
-import type { CompletionData } from "@/lib/completion";
+import type { PgCompletion } from "@/lib/pgComplete";
 import { translate, type Language } from "@/lib/i18n";
 import { useApp } from "@/lib/store";
 import { isMac } from "@/lib/platform";
@@ -48,7 +49,7 @@ export type SqlEditorHandle = {
 type Props = {
   value: string;
   /** 按连接共享，连接变化时由工作区替换。 */
-  completion: CompletionData | null;
+  completion: PgCompletion | null;
   readOnly?: boolean;
   onSelectionChange?: (selection: string | null) => void;
   onDocChange?: (doc: string) => void;
@@ -56,33 +57,10 @@ type Props = {
   errorAt?: { position: number; stamp: number } | null;
 };
 
-/** 语言加上本项目的补全源；用普通数组是为了让 CodeMirror 能把它当作
- *  一个 compartment 值。 */
-function buildLanguage(data: CompletionData | null): Extension {
-  const config: SQLConfig = {
-    dialect: PostgreSQL,
-    upperCaseKeywords: true,
-  };
-  if (data) {
-    config.schema = data.namespace();
-    // 连上库之后，未限定的表名按 public 补，而不是目录里碰巧排第一的 schema。
-    config.defaultSchema = data.catalog?.schemas.some((item) => item.name === "public")
-      ? "public"
-      : data.catalog?.schemas[0]?.name;
-    // 追加而不是 override：override 会关掉 lang-sql 自带的关键词、
-    // 内置函数、表和列补全。挂到 SQL 语言数据上，字符串和注释里不触发。
-    const support = sql(config);
-    return [
-      support,
-      support.language.data.of({
-        autocomplete: data.completionSource as CompletionSource,
-      }),
-      support.language.data.of({
-        autocomplete: data.identifierSource as CompletionSource,
-      }),
-    ];
-  }
-  return sql(config);
+/** 只拿 PostgreSQL 方言做高亮。补全由 autocompletion 的 override 单独提供，
+ *  不走 lang-sql 那份不区分子句的混合建议。 */
+function buildLanguage(): Extension {
+  return sql({ dialect: PostgreSQL, upperCaseKeywords: true });
 }
 
 function placeholderText(language: Language) {
@@ -108,7 +86,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(
 
   useEffect(() => {
     if (!hostRef.current) return;
-    const initialLanguage = buildLanguage(handlers.current.completion);
+    const initialLanguage = buildLanguage();
 
     const state = EditorState.create({
       doc: value,
@@ -131,7 +109,28 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(
         // 提示框默认挂到 document.body，主题（cm-dark）和样式都加不上，
         // 列表会变成黑底黑字。挂回编辑器节点，主题和 z-index 才生效。
         tooltips({ parent: hostRef.current, position: "absolute" }),
-        autocompletion({ activateOnTyping: true, icons: false, maxRenderedOptions: 80 }),
+        autocompletion({
+          // 编辑器只建一次，补全数据会随连接和懒加载的列更换，所以每次都读当前这份。
+          // override 同时关掉 lang-sql 自带的那份：它不区分子句，FROM 后面也堆关键词。
+          override: [
+            ((context) => handlers.current.completion?.completionSource(context) ?? null) as CompletionSource,
+          ],
+          activateOnTyping: true,
+          icons: true,
+          maxRenderedOptions: 80,
+          addToOptions: [
+            {
+              render: (completion) => {
+                if (!completion.detail) return null;
+                const detail = document.createElement("span");
+                detail.className = "cm-completionDetail";
+                detail.textContent = completion.detail;
+                return detail;
+              },
+              position: 80,
+            },
+          ],
+        }),
         language.current.of(initialLanguage),
         keymap.of([
           ...closeBracketsKeymap,
@@ -145,6 +144,18 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(
         placeholderSlot.current.of(placeholderText(uiLanguage)),
         themeSlot.current.of(editorTheme()),
         EditorState.readOnly.of(Boolean(readOnly)),
+        // CodeMirror 只在输入标识符字符时才自动打开补全，空格不算。
+        // `FROM `、`JOIN ` 这类位置正是表名该出现的地方。更新还在进行时
+        // 不能直接开补全，所以放到这次更新之后。
+        EditorView.updateListener.of((update) => {
+          if (!update.docChanged || !handlers.current.completion) return;
+          const cursor = update.state.selection.main.head;
+          if (!update.state.selection.main.empty) return;
+          const before = update.state.sliceDoc(Math.max(0, cursor - 24), cursor);
+          if (!/\b(from|join|into|update|table|on|where|set)\s$/i.test(before)) return;
+          const view = update.view;
+          queueMicrotask(() => startCompletion(view));
+        }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) handlers.current.onDocChange?.(update.state.doc.toString());
           if (update.selectionSet) {
@@ -182,13 +193,6 @@ export const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(
       effects: themeSlot.current.reconfigure(editorTheme()),
     });
   }, [fontScale]);
-
-  // 重新配置语言只替换补全用的 schema，不影响文档、撤销历史和选区。
-  useEffect(() => {
-    viewRef.current?.dispatch({
-      effects: language.current.reconfigure(buildLanguage(completion)),
-    });
-  }, [completion]);
 
   useEffect(() => {
     const view = viewRef.current;

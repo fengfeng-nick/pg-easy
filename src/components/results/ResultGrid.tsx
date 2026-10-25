@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Check, ChevronDown, ChevronUp, Copy, Maximize2 } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, Download, Maximize2 } from "lucide-react";
 import type { Column } from "@/lib/ipc";
+import { describeError } from "@/lib/errors";
+import { rowsAsCsv, rowsAsInserts, rowsAsJson, rowsForCopy, saveRows } from "@/lib/exportRows";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n";
 import { formatCount, formatDuration, mod } from "@/lib/platform";
+import { useApp } from "@/lib/store";
 import { CellValue } from "@/components/results/value";
 import { CellDetail } from "@/components/results/CellDetail";
+import { Menu, MenuItem, MenuSeparator } from "@/components/ui/Menu";
 
 const ROW_HEIGHT = 27;
 const HEADER_HEIGHT = 30;
@@ -50,6 +54,12 @@ type Props = {
   sortable?: boolean;
   /** 这次查询的耗时，显示在结果栏。 */
   durationMs?: number;
+  /** 复制成 INSERT 时用。查询结果没有表名时退回 `result`。 */
+  source?: { schema: string; relation: string } | null;
+  /** 导出文件名，不含扩展名。 */
+  exportName?: string;
+  /** 选中行变化时通知外面。表视图用它定位要改的那一行。 */
+  onSelectRow?: (row: number | null) => void;
 };
 
 export function ResultGrid({
@@ -63,6 +73,9 @@ export function ResultGrid({
   truncated = false,
   sortable = true,
   durationMs,
+  source = null,
+  exportName = "result",
+  onSelectRow,
 }: Props) {
   const t = useT();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -109,13 +122,74 @@ export function ResultGrid({
     scrollRef.current?.scrollTo({ top: 0 });
   }, [columns]);
 
+  const table = useMemo(
+    () => ({ columns, rows: sortedRows }),
+    [columns, sortedRows],
+  );
+  const copyText = useCallback(async (text: string) => {
+    if (!text) {
+      useApp.getState().pushToast({ tone: "info", retitle: (t) => ({ title: t("grid.nothingToCopy") }) });
+      return;
+    }
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  }, []);
+
   const copySelection = useCallback(async () => {
     if (!selected) return;
     const value = sortedRows[selected.row]?.[selected.col];
-    await navigator.clipboard.writeText(value === null || value === undefined ? "" : value);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
-  }, [selected, sortedRows]);
+    await copyText(value === null || value === undefined ? "" : value);
+  }, [copyText, selected, sortedRows]);
+
+  const copyRows = useCallback(
+    async (format: "csv" | "json" | "insert" | "row") => {
+      const picked = rowsForCopy(table, selected?.row ?? null);
+      if (format === "row") {
+        const row = picked.rows[0];
+        await copyText(row ? row.map((value) => value ?? "").join("\t") : "");
+        return;
+      }
+      const schema = source?.schema ?? "public";
+      const relation = source?.relation ?? "result";
+      const text =
+        format === "csv"
+          ? rowsAsCsv(picked)
+          : format === "json"
+            ? rowsAsJson(picked)
+            : rowsAsInserts(schema, relation, picked);
+      await copyText(text);
+    },
+    [copyText, selected, source, table],
+  );
+
+  const exportRows = useCallback(
+    async (format: "csv" | "json") => {
+      const text = format === "csv" ? rowsAsCsv(table) : rowsAsJson(table);
+      try {
+        const path = await saveRows(
+          t("grid.export"),
+          `${exportName}.${format}`,
+          text,
+        );
+        if (path) {
+          useApp.getState().pushToast({
+            tone: "success",
+            retitle: (translate) => ({ title: translate("grid.exported", { name: path.split(/[\\/]/).pop() ?? path }) }),
+          });
+        }
+      } catch (failure) {
+        useApp.getState().pushToast({
+          tone: "error",
+          retitle: (translate) => ({
+            title: translate("grid.exportFailed"),
+            detail: describeError(failure).message,
+          }),
+        });
+      }
+    },
+    [exportName, t, table],
+  );
 
   // 表格内的键盘导航。
   const onKeyDown = (event: React.KeyboardEvent) => {
@@ -168,6 +242,12 @@ export function ResultGrid({
         }
     }
   };
+
+  const notifyRow = useRef(onSelectRow);
+  notifyRow.current = onSelectRow;
+  useEffect(() => {
+    notifyRow.current?.(selected ? selected.row : null);
+  }, [selected]);
 
   useEffect(() => {
     if (!selected) return;
@@ -346,13 +426,26 @@ export function ResultGrid({
                 ? t("common.null")
                 : (sortedRows[selected.row]?.[selected.col] ?? "")}
             </span>
-            <button
-              onClick={copySelection}
-              className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-hover hover:text-ink"
+            <Menu
+              align="end"
+              width={168}
+              trigger={({ toggle }) => (
+                <button
+                  onClick={toggle}
+                  className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-hover hover:text-ink"
+                >
+                  {copied ? <Check className="size-3 text-ok" /> : <Copy className="size-3" />}
+                  {copied ? t("common.copied") : t("grid.copyAs")}
+                </button>
+              )}
             >
-              {copied ? <Check className="size-3 text-ok" /> : <Copy className="size-3" />}
-              {copied ? t("common.copied") : t("common.copy")}
-            </button>
+              <MenuItem onSelect={() => void copySelection()}>{t("grid.copyCell")}</MenuItem>
+              <MenuItem onSelect={() => void copyRows("row")}>{t("grid.copyRow")}</MenuItem>
+              <MenuSeparator />
+              <MenuItem onSelect={() => void copyRows("csv")}>{t("grid.copyCsv")}</MenuItem>
+              <MenuItem onSelect={() => void copyRows("json")}>{t("grid.copyJson")}</MenuItem>
+              <MenuItem onSelect={() => void copyRows("insert")}>{t("grid.copyInserts")}</MenuItem>
+            </Menu>
             <button
               onClick={() => setDetail({ row: selected.row, col: selected.col, rect: new DOMRect() })}
               className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-hover hover:text-ink"
@@ -378,6 +471,24 @@ export function ResultGrid({
             <span title={t("common.copyShortcutTip", { shortcut: mod })}>{t("grid.clickToInspect")}</span>
           </span>
         )}
+        <span className="ml-auto">
+          <Menu
+            align="end"
+            width={148}
+            trigger={({ toggle }) => (
+              <button
+                onClick={toggle}
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-hover hover:text-ink"
+              >
+                <Download className="size-3" />
+                {t("grid.export")}
+              </button>
+            )}
+          >
+            <MenuItem onSelect={() => void exportRows("csv")}>{t("grid.exportCsv")}</MenuItem>
+            <MenuItem onSelect={() => void exportRows("json")}>{t("grid.exportJson")}</MenuItem>
+          </Menu>
+        </span>
       </div>
 
       {detail && (
